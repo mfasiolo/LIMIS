@@ -500,6 +500,3 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
   return output
 
 end
-
-
-
