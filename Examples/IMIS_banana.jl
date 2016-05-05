@@ -22,6 +22,7 @@ using Optim;
 using Distances;
 using Roots;
 using HDF5, JLD;
+using Lora;
 
 # Loading necessary functions
 include("utilities.jl");
@@ -350,99 +351,46 @@ contour(x1, x2, d_lik4);
 ######################## Monte Carlo Experiment
 ##################################################################################
 
-idim = 1;
+cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code");
 
-d = [2; 5; 10; 20][idim];
-niter = [200, 400, 800, 1000][idim];
-quL = [0.25, 0.25, 0.25, 0.99][idim];
-quN = [0.05, 0.05, 0.15, 0.99][idim];
-t₀ = [1, 1, 2, 4][idim];
+include("paralSetUp.jl");
+@everywhere include("paralSetUp.jl");
+@everywhere blas_set_num_threads(1);
 
-# Mixture of Bananas
-banDim = copy(d);
-bananicity = [0.2, -0.03, 0.1, 0.1, 0.1, 0.1];
-sigmaBan = [1, 6, 4, 4, 1, 1];
-banShiftX = [0, 0, 7, -7, 7, -7];
-banShiftY = [0, -5, 7, 7, 7.5, 7.5];
-nmix = length(bananicity);
-bananaW = [1, 4, 2.5, 2.5, 0.5, 0.5]; #ones( nmix ) / nmix #[0.2, 0.6, 0.2]; #;
-bananaW = bananaW / sum(bananaW);
+nrep = 4;
 
-include("Examples/mixtureBanana.jl");
+### Langevin IMIS
+resL = pmap(useless -> IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
+            df = 3, trunc = true, quant = 0, useLangevin = true, verbose = false,
+            t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2),
+            1:1:nrep);
 
-# Create importance mixture
-μMix = vcat([0. 0. 7 -7; -6. 0 8.2 8.2], zeros(d-2, 4));
-ΣMix = zeros(d, d, 4);
-for ii = 1:4   ΣMix[:, :, ii] = -2*inv(hessian(μMix[:, ii][:]));   end
-wMix = bananaW[1:4] / sum(bananaW[1:4]);
+# + mixture reduction
+resL_R = pmap(useless -> IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
+            df = 3, trunc = true, quant = quL, useLangevin = true, verbose = false,
+            t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2),
+            1:1:nrep);
 
-### Set up
-#srand(542625);
-n = 100 * d;
-n₀ = 1000 * d;
+### NIMIS
+resN = pmap(useless -> IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
+            df = 3, trunc = true,  quant = 0, useLangevin = false, verbose = false),
+            1:1:nrep);
 
-nrep = 2;
-resL = [];
-resL_R = [];
-resN = [];
-resN_R = [];
+### Gaussian Mixture importance sampling
 resMix = [];
-
-for ii in 1:nrep
-
-  ### Langevin IMIS
-  tmp = IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
-              df = 3, trunc = true, quant = 0, useLangevin = true, verbose = true,
-              t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2
-              );
-
-  resL = [resL; tmp];
-
-  tmp = IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
-              df = 3, trunc = true, quant = quL, useLangevin = true, verbose = true,
-              t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2
-              );
-
-  resL_R = [resL_R; tmp];
-
-  ### Nearest Neighbour IMIS
-  tmp = IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
-              df = 3, trunc = true,  quant = 0, useLangevin = false, verbose = true);
-
-  resN = [resN; tmp];
-
-  # tmp = IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
-  #             df = 3, trunc = true,  quant = quN, useLangevin = false, verbose = true);
-  #
-  # resN_R = [resN_R; tmp];
-
-  ### Gaussian Mixture IS
+for ii = 1:nrep
   rtmp = rGausMix(n₀ + n*niter, μMix, ΣMix; df = 3, w = wMix);
   wtmp = dTarget(rtmp)./dGausMix(rtmp, μMix, ΣMix; df = 3, w = wMix)[1][:];
   esstmp = ( 1 / sum( (wtmp/sum(wtmp)).^2 ) ) / (n₀ + n*niter);
   resMix = [resMix; Dict{Any,Any}("X₀" => rtmp, "w" => wtmp, "ESS" => esstmp)];
-
-  ### MALA
-  function wrap1(x) dTarget(x; Log = true)[1] end
-  function wrap2(x) score(x)[:]; end
-  p = BasicContMuvParameter(:p, logtarget = wrap1,
-                                gradlogtarget = wrap2)
-  model = likelihood_model(p, false);
-  sampler = MALA(0.9);
-  mcrange = BasicMCRange(nsteps=(n₀ + n*niter), burnin=round(Int, (n₀ + n*niter)/10.));
-  v0 = Dict(:p=>rep(0., d));
-  ### Save grad-log-target along with the chain (value and log-target)
-  outopts = Dict{Symbol, Any}(:monitor=>[:value, :logtarget, :gradlogtarget],
-                              :diagnostics=>[:accept]);
-  job = BasicMCJob(model, sampler, mcrange, v0,
-                   tuner=VanillaMCTuner(verbose=true), outopts=outopts);
-  run(job);
-  chain = output(job);
-  scatter(chain.value[1, :][:], chain.value[2, :][:])
-
-  Lora.ess(chain.value)
-
 end
+
+### MALA
+resMALA = pmap(useless -> output( run(job) ), 1:1:nrep);
+
+####
+# Diagnostics
+####
 
 ESSL = reduce(hcat, map(x_ -> x_["ESS"][:], resL) )';
 ESSL_R = reduce(hcat, map(x_ -> x_["ESS"][:], resL_R) )';
@@ -499,20 +447,23 @@ densL = map(O -> kde(ySeq, O["X₀"][1, :][:], h; w = O["w"]), resL);
 densL_R = map(O -> kde(ySeq, O["X₀"][1, :][:], h; w = O["w"]), resL_R);
 densN = map(O -> kde(ySeq, O["X₀"][1, :][:], h; w = O["w"]), resN);
 densMix = map(O -> kde(ySeq, O["X₀"][1, :][:], h; w = O["w"]), resMix);
+densMala = map(O -> kde(ySeq, O.value[1, :][:], h), resMALA);
 
 ii = 1
 plot(ySeq, densL[ii], label = "LIMIS");
 plot(ySeq, densL_R[ii], label = "LIMIS_R");
 plot(ySeq, densN[ii], label = "NIMIS");
 plot(ySeq, densMix[ii], label = "GausMix");
+plot(ySeq, densMala[ii], label = "MALA");
 plot(ySeq, densTRUE, label = "Truth");
-legend(loc="lower center",fancybox="true")
+legend(loc="lower center",fancybox="true");
 
 maccL1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL);
 maccL_R1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL_R);
 maccN1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densN);
 maccMix1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMix);
-hcat(maccL1, maccL_R1, maccN1, maccMix1)
+maccMala1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMala);
+hcat(maccL1, maccL_R1, maccN1, maccMix1, maccMala1)
 
 ### Dimension 2
 δ = 0.1;
@@ -524,17 +475,70 @@ densL = map(O -> kde(ySeq, O["X₀"][2, :][:], h; w = O["w"]), resL);
 densL_R = map(O -> kde(ySeq, O["X₀"][2, :][:], h; w = O["w"]), resL_R);
 densN = map(O -> kde(ySeq, O["X₀"][2, :][:], h; w = O["w"]), resN);
 densMix = map(O -> kde(ySeq, O["X₀"][2, :][:], h; w = O["w"]), resMix);
+densMala = map(O -> kde(ySeq, O.value[2, :][:], h), resMALA);
 
 ii = 1
 plot(ySeq, densL[ii], label = "LIMIS");
 plot(ySeq, densL_R[ii], label = "LIMIS_R");
 plot(ySeq, densN[ii], label = "NIMIS");
 plot(ySeq, densMix[ii], label = "GausMix");
+plot(ySeq, densMala[ii], label = "MALA");
 plot(ySeq, densTRUE, label = "Truth");
-legend(loc="lower center",fancybox="true")
+legend(loc="lower center",fancybox="true");
 
 maccL1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL);
 maccL_R1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL_R);
 maccN1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densN);
 maccMix1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMix);
-hcat(maccL1, maccL_R1, maccN1, maccMix1)
+maccMala1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMala);
+hcat(maccL1, maccL_R1, maccN1, maccMix1, maccMala1)
+
+######
+## Mean and variance of "Gaussian" dimensions
+######
+
+### Means summed across dimensions
+ns = length(resL[1]["w"]);
+muL = reduce(hcat, map(O -> O["X₀"][3:d, :] * O["w"] / ns, resL));
+muL_R = reduce(hcat, map(O -> O["X₀"][3:d, :] * O["w"] / ns, resL_R));
+muN = reduce(hcat, map(O -> O["X₀"][3:d, :] * O["w"] / ns, resN));
+muMix = reduce(hcat, map(O -> O["X₀"][3:d, :] * O["w"] / ns, resMix));
+muMala = reduce(hcat, map(O -> mean(O.value[3:d, :], 2), resMALA));
+
+tmp = hcat(sum(muL, 1)', sum(muL_R, 1)', sum(muN, 1)',
+           sum(muMix, 1)', sum(muMala, 1)');
+
+mean(tmp, 1) # Mean estimates
+mean(tmp.^2, 1) # MSE
+std(tmp, 1) # Standard deviation
+
+### Variances summed across dimensions
+function uglyFun(x, w);
+
+  w = w[:];
+
+  d, n = size(x);
+
+  imu = x * w / n;
+  ivar = zeros(d);
+
+  for ii = 1:d
+   ivar[ii] = dot( (x[ii, :][:] - imu[ii]).^2, w ) / n;
+  end
+
+  return ivar;
+
+end
+
+varL = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["w"]), resL));
+varL_R = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["w"]), resL_R));
+varN = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["w"]), resN));
+varMix = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["w"]), resMix));
+varMala = reduce(hcat, map(O -> var(O.value[3:d, :], 2), resMALA));
+
+tmp = hcat(sum(varL, 1)', sum(varL_R, 1)', sum(varN, 1)',
+           sum(varMix, 1)', sum(varMala, 1)');
+
+mean(tmp, 1) # Mean estimates
+mean((tmp - (d-2)).^2, 1) # MSE
+std(tmp, 1) # Standard deviation
