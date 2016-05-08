@@ -357,7 +357,7 @@ include("paralSetUp.jl");
 @everywhere include("paralSetUp.jl");
 @everywhere blas_set_num_threads(1);
 
-nrep = 4;
+nrep = 2;
 
 ### Langevin IMIS
 resL = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
@@ -386,7 +386,7 @@ for ii = 1:nrep
 end
 
 ### MALA
-resMALA = pmap(_x -> launchMALAjob(_x), 1:1:nrep);
+resMALA = pmap(launchMALAjob, 1:1:nrep);
 
 ####
 # Diagnostics
@@ -484,7 +484,7 @@ plot(ySeq, densN[ii], label = "NIMIS");
 plot(ySeq, densMix[ii], label = "GausMix");
 plot(ySeq, densMala[ii], label = "MALA");
 plot(ySeq, densTRUE, label = "Truth");
-legend(loc="lower center",fancybox="true");
+legend(loc="top left",fancybox="true");
 
 maccL1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL);
 maccL_R1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL_R);

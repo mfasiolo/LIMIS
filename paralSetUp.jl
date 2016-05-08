@@ -21,8 +21,8 @@ include("fastMix.jl");
 idim = 3;
 
 d = [2; 5; 10; 20][idim];
-niter = [200, 400, 800, 1000][idim];
-quL = [0.25, 0.25, 0.25, 0.99][idim];
+niter = [200, 400, 400, 1000][idim];
+quL = [0.25, 0.25, 0.01, 0.1][idim];
 quN = [0.05, 0.05, 0.15, 0.99][idim];
 t₀ = [1, 1, 2, 4][idim];
 
@@ -65,7 +65,7 @@ function launchMALAjob(nouse)
 
   # Function that launches a MALA job
   job = BasicMCJob(model, sampler, mcrange, v0,
-                    tuner=AcceptanceRateMCTuner(0.234, verbose=false),
+                    tuner=AcceptanceRateMCTuner(0.234, verbose=true),
                     outopts=outopts)
 
   run(job);
