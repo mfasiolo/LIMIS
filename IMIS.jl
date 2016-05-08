@@ -36,6 +36,7 @@
 # - Q: optional scaling matrix for the Langeving diffusion. Needed only if useLangevin == true. Currently not used.
 # - score: gradient of the target density. Needed only if useLangevin == true.
 # - hessian: hessian of the target density. Needed only if useLangevin == true.
+#
 ### OUTPUT
 # The output is a dictionary with the following entries
 # - ESS: the ESS achieved at each iteration.
@@ -52,8 +53,7 @@
 #
 function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
               df = 3, trunc = true, quant = 0.01, useLangevin = true, verbose = true,
-              targetESS = 1-1e-3, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing
-              )
+              targetESS = 1-1e-3, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing)
 
   # Safety checks
   if useLangevin && (t₀ == nothing || score == nothing || hessian == nothing)

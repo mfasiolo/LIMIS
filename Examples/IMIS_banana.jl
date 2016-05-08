@@ -351,7 +351,7 @@ contour(x1, x2, d_lik4);
 ######################## Monte Carlo Experiment
 ##################################################################################
 
-cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code");
+@everywhere cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code");
 
 include("paralSetUp.jl");
 @everywhere include("paralSetUp.jl");
@@ -360,19 +360,19 @@ include("paralSetUp.jl");
 nrep = 4;
 
 ### Langevin IMIS
-resL = pmap(useless -> IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
+resL = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
             df = 3, trunc = true, quant = 0, useLangevin = true, verbose = false,
             t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2),
             1:1:nrep);
 
 # + mixture reduction
-resL_R = pmap(useless -> IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
+resL_R = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
             df = 3, trunc = true, quant = quL, useLangevin = true, verbose = false,
             t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2),
             1:1:nrep);
 
 ### NIMIS
-resN = pmap(useless -> IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
+resN = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
             df = 3, trunc = true,  quant = 0, useLangevin = false, verbose = false),
             1:1:nrep);
 
@@ -386,7 +386,7 @@ for ii = 1:nrep
 end
 
 ### MALA
-resMALA = pmap(useless -> output( run(job) ), 1:1:nrep);
+resMALA = pmap(_x -> launchMALAjob(_x), 1:1:nrep);
 
 ####
 # Diagnostics
@@ -435,7 +435,7 @@ plot(1:(niter), mean(sizeN, 1)[:], label = "NIMIS")
 ## Marginal accuracies
 ######
 
-truX = rBanMix(1e7);
+truX = rBanMix(1e6);
 
 ### Dimension 1
 δ = 0.1;

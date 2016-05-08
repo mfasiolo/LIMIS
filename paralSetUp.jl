@@ -1,5 +1,5 @@
 
-cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code")
+# cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code")
 
 using StatsBase;
 using Distributions;
@@ -18,8 +18,7 @@ include("IMIS.jl");
 include("tuneIMIS.jl");
 include("fastMix.jl");
 
-
-idim = 2;
+idim = 3;
 
 d = [2; 5; 10; 20][idim];
 niter = [200, 400, 800, 1000][idim];
@@ -51,15 +50,26 @@ for ii = 1:4   ΣMix[:, :, ii] = -2*inv(hessian(μMix[:, ii][:]));   end
 wMix = bananaW[1:4] / sum(bananaW[1:4]);
 
 # MALA setup
-function wrap1(x) dTarget(x; Log = true)[1] end
-function wrap2(x) score(x)[:]; end
-p = BasicContMuvParameter(:p, logtarget = wrap1, gradlogtarget = wrap2)
-model = likelihood_model(p, false);
-sampler = MALA(0.9);
-mcrange = BasicMCRange(nsteps=(n₀ + n*niter), burnin=round(Int, (n₀ + n*niter)/10.));
-v0 = Dict(:p=>rep(0., d));
-### Save grad-log-target along with the chain (value and log-target)
-outopts = Dict{Symbol, Any}(:monitor=>[:value, :logtarget, :gradlogtarget],
-                            :diagnostics=>[:accept]);
-job = BasicMCJob(model, sampler, mcrange, v0,
-                 tuner=AcceptanceRateMCTuner(0.234, verbose=false), outopts=outopts);
+function launchMALAjob(nouse)
+
+  function wrap1(x) dTarget(x; Log = true)[1] end
+  function wrap2(x) score(x)[:]; end
+  p = BasicContMuvParameter(:p, logtarget = wrap1, gradlogtarget = wrap2)
+  model = likelihood_model(p, false);
+  sampler = MALA(0.9);
+  mcrange = BasicMCRange(nsteps=(n₀ + n*niter), burnin=round(Int, (n₀ + n*niter)/10.));
+  v0 = Dict(:p=>rep(0., d));
+  ### Save grad-log-target along with the chain (value and log-target)
+  outopts = Dict{Symbol, Any}(:monitor=>[:value, :logtarget, :gradlogtarget],
+                              :diagnostics=>[:accept]);
+
+  # Function that launches a MALA job
+  job = BasicMCJob(model, sampler, mcrange, v0,
+                    tuner=AcceptanceRateMCTuner(0.234, verbose=false),
+                    outopts=outopts)
+
+  run(job);
+
+  return output(job);
+
+end
