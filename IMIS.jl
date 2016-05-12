@@ -53,7 +53,8 @@
 #
 function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
               df = 3, trunc = true, quant = 0.01, useLangevin = true, verbose = true,
-              targetESS = 1-1e-3, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing)
+              targetESS = 1-1e-3, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing,
+              maxMix = Inf)
 
   # Safety checks
   if useLangevin && (t₀ == nothing || score == nothing || hessian == nothing)
@@ -109,14 +110,19 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
 
   end
 
-  w = w / sum( w );
+  wn = w / sum( w );
 
   ESS = zeros( niter + 1 );
-  ESS[1] = ( 1 / sum( w.^2 ) ) / n₀;
+  ESS[1] = ( 1 / sum( wn.^2 ) ) / n₀;
 
   for ii = 1:niter ##### START main loop
 
     if verbose @printf("%d \n", ii); end
+
+    # If the maximum number of mixture has been reached, set quant to almost 1. We don't set it to
+    # 1 because we still want to add mixture components that are very different from the old ones.
+    # If you set quant=1. then the ESS might decrease when maxMix is reached
+    if nmix > maxMix   quant = 0.99   end
 
     # Check if μ is very close to an existing mixture component
     if quant > 0. && ii > 1
@@ -139,8 +145,11 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
 
       else  # ... n nearest neighbours
 
-        X_old = X₀[:, 1:(n₀ + n*(ii-1))];
-        Σ = nnCov(μ, w, X_old, cov(X_old', WeightVec(w)), n)[:, :, 1];
+        # Raftery in step 2.a of the IMIS paper says to use tmpw = 0.5*(wn + 1/length(wn))
+        # but this does not quite work in high dimensions.
+         tmpw = wn.*0 + 1/length(wn);
+         X_old = X₀[:, 1:(n₀ + n*(ii-1))];
+         Σ = nnCov(μ, tmpw, X_old, cov(X_old'), n)[:, :, 1];
 
       end
 
@@ -286,7 +295,8 @@ end
 
 function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
               df = 3, trunc = true, quant = 0.01, useLangevin = true, verbose = true,
-              targetESS = 1-1e-3, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing
+              targetESS = 1-1e-3, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing,
+              maxMix = Inf
               )
 
   # Safety checks
@@ -344,14 +354,19 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
 
   end
 
-  w = w / sum( w );
+  wn = w / sum( w );
 
   ESS = zeros( niter + 1 );
-  ESS[1] = ( 1 / sum( w.^2 ) ) / n₀;
+  ESS[1] = ( 1 / sum( wn.^2 ) ) / n₀;
 
   for ii = 1:niter ##### START main loop
 
     if verbose @printf("%d \n", ii); end
+
+    # If the maximum number of mixture has been reached, set quant to almost 1. We don't set it to
+    # 1 because we still want to add mixture components that are very different from the old ones.
+    # If you set quant=1. then the ESS might decrease when maxMix is reached
+    if nmix > maxMix   quant = 0.99   end
 
     # Check if μ is very close to an existing mixture component
     if quant > 0. && ii > 1
@@ -374,8 +389,11 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
 
       else  # ... n nearest neighbours
 
+       # Raftery in step 2.a of the IMIS paper says to use tmpw = 0.5*(wn + 1/length(wn))
+       # but this does not quite work in high dimensions.
+        tmpw = wn.*0 + 1/length(wn);
         X_old = X₀[:, 1:(n₀ + n*(ii-1))];
-        Σ = nnCov(μ, w, X_old, cov(X_old', WeightVec(w)), n)[:, :, 1];
+        Σ = nnCov(μ, tmpw, X_old, cov(X_old'), n)[:, :, 1];
 
       end
 
