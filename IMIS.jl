@@ -156,8 +156,8 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
       # Second check on the propagated mixture component, to check if it's actually worth adding it
       if quant > 0. && ii > 1
 
-        #st = map(kk_ -> - expESS(μ[:], μ₀[:, kk_][:], Σ, Σ₀[:, :, kk_]), 1:nmix);
-        #add = minimum(dist) > - 0.75;
+        #dist = map(kk_ -> - expESS(μ[:], μ₀[:, kk_][:], Σ, Σ₀[:, :, kk_]), 1:nmix);
+        #add = maximum( abs(dist) ) < 0.5;
 
         dist = map(kk_ -> maha(μ, μ₀[:, kk_], Σ₀[:, :, kk_])[1], 1:nmix);
         add = minimum(dist) > quantile(Chisq(d), quant);
@@ -400,8 +400,10 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
       # Second check on the propagated mixture component, to check if it's actually worth adding it
       if quant > 0. && ii > 1
 
+        #dist = map(kk_ -> - expESS(μ[:], μ₀[:, kk_][:], Σ, Σ₀[:, :, kk_]), 1:nmix);
+        #add = maximum( abs(dist) ) < 0.5;
+
         dist = map(kk_ -> maha(μ, μ₀[:, kk_], Σ₀[:, :, kk_])[1], 1:nmix);
-        #@printf("%f ", μ[1])
         add = minimum(dist) > quantile(Chisq(d), quant);
 
       end

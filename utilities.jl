@@ -36,6 +36,17 @@ end
 
 function meanExpTrick(x) return sumExpTrick(x) / length(x) end
 
+# Each row of x is a d-dimensional vector
+function WsumExpTrick(x, w)
+
+  z = maximum(x, 2)[:];
+
+  out = exp(broadcast(-, x, z)) * w .* exp(z);
+
+  return out;
+
+end
+
 #################################################
 # Root-finding by Bisection
 #################################################
