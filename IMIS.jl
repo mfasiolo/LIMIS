@@ -48,7 +48,7 @@
 # - μ₀: the means of the mixture importance density at the final iteration
 # - Σ₀: the covariance matrices of the mixture importance density at the final iteration[:, :, 1:nmix]
 # - μOrig: the samples that had the highest weights at each iteration. If useLangevin == true than μOrig = μ₀.
-# - w: the sample weights at the final iteration.
+# - logw: the importance log-weights at the final iteration.
 # - wmix: the normalized mixture weights.
 # - dLogTar: the value of the log-target density at each sample point in X₀.
 # - dLogPrior: the value of the log-prior density at each sample point in X₀.
@@ -112,7 +112,7 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
   # (Optionally) Truncate importance weights
   if trunc
 
-    logw = min(logw, log(length(w))/2);
+    logw = min(logw, log(length(logw))/2);
 
   end
 
@@ -252,7 +252,7 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
     # (Optionally) Truncate importance weights
     if trunc
 
-      logw = min(logw, log(length(w))/2);
+      logw = min(logw, log(length(logw))/2);
 
     end
 
@@ -275,7 +275,7 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
   output = Dict{Any,Any}("ESS" => ESS,
                          "X₀" => X₀,
                          "μ₀" => μ₀[:, 1:nmix], "Σ₀" => Σ₀[:, :, 1:nmix], "μOrig" => μOrig[:, 1:nmix],
-                         "w" => w, "wmix" => wmix[1:nmix] / niter,
+                         "logw" => logw, "wmix" => wmix[1:nmix] / niter,
                          "dLogTar" => dLogTar, "dLogPrior" => dLogPrior,
                          "dimMix" => dimMix,
                          "control" => control)
@@ -362,7 +362,7 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
   # (Optionally) Truncate importance weights
   if trunc
 
-    logw = min(logw, log(length(w))/2);
+    logw = min(logw, log(length(logw))/2);
 
   end
 
@@ -504,7 +504,7 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
     # (Optionally) Truncate importance weights
     if trunc
 
-      logw = min(logw, log(length(w))/2);
+      logw = min(logw, log(length(logw))/2);
 
     end
 
@@ -527,7 +527,7 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
   output = Dict{Any,Any}("ESS" => ESS,
                          "X₀" => X₀,
                          "μ₀" => μ₀[:, 1:nmix], "Σ₀" => Σ₀[:, :, 1:nmix], "μOrig" => μOrig[:, 1:nmix],
-                         "w" => w, "wmix" => wmix[1:nmix] / niter,
+                         "logw" => logw, "wmix" => wmix[1:nmix] / niter,
                          "dLogTar" => dLogTar, "dLogPrior" => dLogPrior,
                          "dimMix" => dimMix,
                          "control" => control)

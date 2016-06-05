@@ -3,11 +3,13 @@
 ##########################################################################################
 
 ### TODO
-# - In IMIS, find this line "add = minimum(dist) > - 0.75;". Where we are checking
+# 1) In IMIS, find this line "add = minimum(dist) > - 0.75;". Where we are checking
 # whether the expected ESS of old mixtures wrt the new components is > 0.75. We need
 # to write in the text that we do two checks, one before propagating the mixture (which)
 # is used also by NIMIS, and one after propagating the mixture (the one I am referring to
-# above), which is done only in LIMIS.
+# above), which is done only in LIMIS. EDIT: this is not a good idea, because I have to checks
+# to determine where to add the mixture component. In the first I cannot use the expESS because
+# I have not created the mixture component yet. Hence I don't want to end up with two criteria.
 
 #######
 # Load functions and one of the examples
@@ -351,29 +353,30 @@ contour(x1, x2, d_lik4);
 ######################## Monte Carlo Experiment
 ##################################################################################
 
-@everywhere cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code");
+# @everywhere cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code");
+@everywhere cd("$(homedir())/Dropbox/Work/Liverpool/IMIS/Julia_code");
 
 include("paralSetUp.jl");
 @everywhere include("paralSetUp.jl");
 @everywhere blas_set_num_threads(1);
 
-nrep = 2;
+nrep = 10;
 
 ### Langevin IMIS
 resL = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
-            df = 3, trunc = true, quant = 0, useLangevin = true, verbose = false,
+            df = 3, trunc = true, quant = 0., useLangevin = true, verbose = false,
             t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2),
             1:1:nrep);
 
 # + mixture reduction
-resL_R = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
-            df = 3, trunc = true, quant = quL, useLangevin = true, verbose = false,
-            t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2),
-            1:1:nrep);
+#resL_R = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
+#            df = 3, trunc = true, quant = quL, useLangevin = true, verbose = false,
+#            t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2),
+#            1:1:nrep);
 
 ### NIMIS
 resN = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
-            df = 3, trunc = true,  quant = 0, useLangevin = false, verbose = false),
+            df = 3, trunc = true,  quant = 0., useLangevin = false, verbose = false, B = Bmult*n),
             1:1:nrep);
 
 ### Gaussian Mixture importance sampling
@@ -382,24 +385,24 @@ for ii = 1:nrep
   rtmp = rGausMix(n₀ + n*niter, μMix, ΣMix; df = 3, w = wMix);
   wtmp = dTarget(rtmp)./dGausMix(rtmp, μMix, ΣMix; df = 3, w = wMix)[1][:];
   esstmp = ( 1 / sum( (wtmp/sum(wtmp)).^2 ) ) / (n₀ + n*niter);
-  resMix = [resMix; Dict{Any,Any}("X₀" => rtmp, "w" => wtmp, "ESS" => esstmp)];
+  resMix = [resMix; Dict{Any,Any}("X₀" => rtmp, "logw" => log(wtmp), "ESS" => esstmp)];
 end
 
 ### MALA
-resMALA = pmap(launchMALAjob, 1:1:nrep);
+resMALA = pmap(nouse -> launchMALAjob(nouse), 1:1:nrep);
 
 ####
 # Diagnostics
 ####
 
 ESSL = reduce(hcat, map(x_ -> x_["ESS"][:], resL) )';
-ESSL_R = reduce(hcat, map(x_ -> x_["ESS"][:], resL_R) )';
+#ESSL_R = reduce(hcat, map(x_ -> x_["ESS"][:], resL_R) )';
 ESSN = reduce(hcat, map(x_ -> x_["ESS"][:], resN) )';
 ESSMix = reduce(hcat, map(x_ -> x_["ESS"], resMix) )';
 # ESSN_R = reduce(hcat, map(x_ -> x_["ESS"][:], resN_R) )';
 
 sizeL = reduce(hcat, map(x_ -> x_["dimMix"][:], resL) )';
-sizeL_R = reduce(hcat, map(x_ -> x_["dimMix"][:], resL_R) )';
+#sizeL_R = reduce(hcat, map(x_ -> x_["dimMix"][:], resL_R) )';
 sizeN = reduce(hcat, map(x_ -> x_["dimMix"][:], resN) )';
 # sizeN_R = reduce(hcat, map(x_ -> x_["dimMix"][:], resN_R) )';
 
@@ -410,7 +413,7 @@ title("Effective Sample Size (ESS)");
 xlabel("Iteration")
 ylabel("ESS")
 plot(0:1:(niter), mean(ESSL, 1)[:], label = "LIMIS")
-plot(0:1:(niter), mean(ESSL_R, 1)[:], label = "LIMIS_R")
+#plot(0:1:(niter), mean(ESSL_R, 1)[:], label = "LIMIS_R")
 plot(0:1:(niter), mean(ESSN, 1)[:], label = "NIMIS")
 plot(0:1:(niter), rep(mean(ESSMix, 1)[:], niter+1), label = "GausMix")
 # plot(0:1:(niter), mean(ESSN_R, 1)[:], label = "NIMIS_R")
@@ -418,14 +421,23 @@ legend(loc="lower right",fancybox="true")
 
 subplot(122);
 grid("on");
+title("Cost per sample");
+xlabel("Iteration")
+ylabel("Cost")
+plot(0:1:(niter), ([0; mean(sizeL, 1)[:]] + 6) ./ mean(ESSL, 1)[:], label = "LIMIS")
+#plot(0:1:(niter), ([0; mean(sizeL_R, 1)[:]] + 6) ./ mean(ESSL_R, 1)[:], label = "LIMIS_R")
+plot(0:1:(niter), ([0; mean(sizeN, 1)[:]] + 6) ./ mean(ESSN, 1)[:], label = "NIMIS")
+legend(loc="lower right",fancybox="true")
+
+fig = figure();
+grid("on");
 title("Number of mixture components (NC)");
 xlabel("Iteration")
 ylabel("NC")
 plot(1:(niter), mean(sizeL, 1)[:], label = "LIMIS")
-plot(1:(niter), mean(sizeL_R, 1)[:], label = "LIMIS_R")
+#plot(1:(niter), mean(sizeL_R, 1)[:], label = "LIMIS_R")
 plot(1:(niter), mean(sizeN, 1)[:], label = "NIMIS")
 # plot(1:(niter), mean(sizeN_R, 1)[:], label = "NIMIS_R")
-
 
 #############################
 # Checking estimates
@@ -443,15 +455,13 @@ ySeq = -20:δ:20;
 densTRUE = kde(ySeq, truX[:, 1][:], 0.1);
 
 h = 0.2
-densL = map(O -> kde(ySeq, O["X₀"][1, :][:], h; w = O["w"]), resL);
-densL_R = map(O -> kde(ySeq, O["X₀"][1, :][:], h; w = O["w"]), resL_R);
-densN = map(O -> kde(ySeq, O["X₀"][1, :][:], h; w = O["w"]), resN);
-densMix = map(O -> kde(ySeq, O["X₀"][1, :][:], h; w = O["w"]), resMix);
+densL = map(O -> kde(ySeq, O["X₀"][1, :][:], h; logw = O["logw"]), resL);
+densN = map(O -> kde(ySeq, O["X₀"][1, :][:], h; logw = O["logw"]), resN);
+densMix = map(O -> kde(ySeq, O["X₀"][1, :][:], h; logw = O["logw"]), resMix);
 densMala = map(O -> kde(ySeq, O.value[1, :][:], h), resMALA);
 
 ii = 1
 plot(ySeq, densL[ii], label = "LIMIS");
-plot(ySeq, densL_R[ii], label = "LIMIS_R");
 plot(ySeq, densN[ii], label = "NIMIS");
 plot(ySeq, densMix[ii], label = "GausMix");
 plot(ySeq, densMala[ii], label = "MALA");
@@ -459,11 +469,10 @@ plot(ySeq, densTRUE, label = "Truth");
 legend(loc="lower center",fancybox="true");
 
 maccL1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL);
-maccL_R1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL_R);
 maccN1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densN);
 maccMix1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMix);
 maccMala1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMala);
-hcat(maccL1, maccL_R1, maccN1, maccMix1, maccMala1)
+hcat(maccL1, maccN1, maccMix1, maccMala1)
 
 ### Dimension 2
 δ = 0.1;
@@ -471,15 +480,13 @@ ySeq = -11:δ:15;
 densTRUE = kde(ySeq, truX[:, 2][:], 0.05);
 
 h = 0.1;
-densL = map(O -> kde(ySeq, O["X₀"][2, :][:], h; w = O["w"]), resL);
-densL_R = map(O -> kde(ySeq, O["X₀"][2, :][:], h; w = O["w"]), resL_R);
-densN = map(O -> kde(ySeq, O["X₀"][2, :][:], h; w = O["w"]), resN);
-densMix = map(O -> kde(ySeq, O["X₀"][2, :][:], h; w = O["w"]), resMix);
+densL = map(O -> kde(ySeq, O["X₀"][2, :][:], h; logw = O["logw"]), resL);
+densN = map(O -> kde(ySeq, O["X₀"][2, :][:], h; logw = O["logw"]), resN);
+densMix = map(O -> kde(ySeq, O["X₀"][2, :][:], h; logw = O["logw"]), resMix);
 densMala = map(O -> kde(ySeq, O.value[2, :][:], h), resMALA);
 
 ii = 1
 plot(ySeq, densL[ii], label = "LIMIS");
-plot(ySeq, densL_R[ii], label = "LIMIS_R");
 plot(ySeq, densN[ii], label = "NIMIS");
 plot(ySeq, densMix[ii], label = "GausMix");
 plot(ySeq, densMala[ii], label = "MALA");
@@ -487,58 +494,67 @@ plot(ySeq, densTRUE, label = "Truth");
 legend(loc="top left",fancybox="true");
 
 maccL1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL);
-maccL_R1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL_R);
 maccN1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densN);
 maccMix1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMix);
 maccMala1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMala);
-hcat(maccL1, maccL_R1, maccN1, maccMix1, maccMala1)
+hcat(maccL1, maccN1, maccMix1, maccMala1)
 
 ######
 ## Mean and variance of "Gaussian" dimensions
 ######
 
 ### Means summed across dimensions
-ns = length(resL[1]["w"]);
-muL = reduce(hcat, map(O -> O["X₀"][3:d, :] * O["w"] / ns, resL));
-muL_R = reduce(hcat, map(O -> O["X₀"][3:d, :] * O["w"] / ns, resL_R));
-muN = reduce(hcat, map(O -> O["X₀"][3:d, :] * O["w"] / ns, resN));
-muMix = reduce(hcat, map(O -> O["X₀"][3:d, :] * O["w"] / ns, resMix));
+muL = reduce(hcat, map(O -> WmeanExpTrick(O["X₀"][3:d, :], O["logw"]), resL));
+muN = reduce(hcat, map(O -> WmeanExpTrick(O["X₀"][3:d, :], O["logw"]), resN));
+muMix = reduce(hcat, map(O -> WmeanExpTrick(O["X₀"][3:d, :], O["logw"]), resMix));
 muMala = reduce(hcat, map(O -> mean(O.value[3:d, :], 2), resMALA));
 
-tmp = hcat(sum(muL, 1)', sum(muL_R, 1)', sum(muN, 1)',
-           sum(muMix, 1)', sum(muMala, 1)');
+tmp = hcat(sum(muL, 1)', sum(muN, 1)', sum(muMix, 1)', sum(muMala, 1)');
 
 mean(tmp, 1) # Mean estimates
 mean(tmp.^2, 1) # MSE
 std(tmp, 1) # Standard deviation
 
 ### Variances summed across dimensions
-function uglyFun(x, w);
+function uglyFun(x, logw);
 
-  w = w[:];
+  logw = logw[:];
 
   d, n = size(x);
 
-  imu = x * w / n;
+  imu = WmeanExpTrick(x, logw);
   ivar = zeros(d);
 
   for ii = 1:d
-   ivar[ii] = dot( (x[ii, :][:] - imu[ii]).^2, w ) / n;
+   ivar[ii] = WmeanExpTrick((x[ii, :][:]' - imu[ii]).^2, logw)[1];
   end
 
   return ivar;
 
 end
 
-varL = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["w"]), resL));
-varL_R = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["w"]), resL_R));
-varN = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["w"]), resN));
-varMix = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["w"]), resMix));
+varL = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["logw"]), resL));
+varN = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["logw"]), resN));
+varMix = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["logw"]), resMix));
 varMala = reduce(hcat, map(O -> var(O.value[3:d, :], 2), resMALA));
 
-tmp = hcat(sum(varL, 1)', sum(varL_R, 1)', sum(varN, 1)',
-           sum(varMix, 1)', sum(varMala, 1)');
+tmp = hcat(sum(varL, 1)', sum(varN, 1)', sum(varMix, 1)', sum(varMala, 1)')
 
 mean(tmp, 1) # Mean estimates
 mean((tmp - (d-2)).^2, 1) # MSE
+std(tmp, 1) # Standard deviation
+
+######
+## Normalizing constant estimates
+######
+
+### Means summed across dimensions
+conL = reduce(hcat, map(O -> meanExpTrick(O["logw"]), resL));
+conN = reduce(hcat, map(O -> meanExpTrick(O["logw"]), resN));
+conMix = reduce(hcat, map(O -> meanExpTrick(O["logw"]), resMix));
+
+tmp = hcat(conL', conN', conMix')
+
+mean(tmp, 1) # Mean estimates
+mean((tmp - 1.).^2, 1) # MSE
 std(tmp, 1) # Standard deviation

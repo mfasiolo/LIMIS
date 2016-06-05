@@ -18,13 +18,14 @@ include("IMIS.jl");
 include("tuneIMIS.jl");
 include("fastMix.jl");
 
-idim = 3;
+idim = 4;
 
-d = [2; 5; 10; 20][idim];
-niter = [200, 400, 400, 1000][idim];
-quL = [0.25, 0.25, 0.01, 0.1][idim];
-quN = [0.05, 0.05, 0.15, 0.99][idim];
-t₀ = [1, 1, 2, 4][idim];
+d = [2; 5; 10; 20; 100][idim];
+niter = [200, 200, 200, 200, 100][idim];
+# quL = [0.25, 0.4, 0.01, 0.000001, 0.0000000001][idim];
+# quN = [0.05, 0.05, 0.15, 0.99, 0.99][idim];
+t₀ = [1, 1, 2, 3, 5][idim];
+Bmult = [1, 1, 1, 2, 5][idim];
 
 # Mixture of Bananas
 banDim = copy(d);

@@ -6,7 +6,7 @@ rep(v, n) = [v[div(i,n)+1] for i=0:n*length(v)-1]
 
 ### Univartiate kernel density estimator
 
-function kde(y, x, h; w = nothing);
+function kde(y, x, h; logw = nothing);
 
   y = y[:];
   x = x[:];
@@ -14,9 +14,13 @@ function kde(y, x, h; w = nothing);
   ny = length( y );
   nx = length( x );
 
-  if w == nothing    w = ones(nx)    end
+  if logw == nothing    logw = zeros(nx)    end
 
-  out = map(_z -> mean(w .* pdf(Normal(_z, h), x)), y);
+  # Using sumExpTrick here to avoid underflow
+  mx = maximum( logw );
+  logw -= mx;
+
+  out = map(_z -> exp(mx)*mean(exp(logw) .* pdf(Normal(_z, h), x)), y);
 
   return out;
 
@@ -36,16 +40,21 @@ end
 
 function meanExpTrick(x) return sumExpTrick(x) / length(x) end
 
+### This is the meanExpTrick, but when a weighted sum is needed.
+### I assume that the weights might overflow, not x.
 # Each row of x is a d-dimensional vector
-function WsumExpTrick(x, w)
+function WsumExpTrick(x, logw)
 
-  z = maximum(x, 2)[:];
+  z = maximum( logw );
+  logw -= z;
 
-  out = exp(broadcast(-, x, z)) * w .* exp(z);
+  out = (x * exp(logw)) * exp(z);
 
   return out;
 
 end
+
+function WmeanExpTrick(x, logw) return WsumExpTrick(x, logw) / length(logw) end
 
 #################################################
 # Root-finding by Bisection
