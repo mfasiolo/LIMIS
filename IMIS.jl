@@ -36,6 +36,10 @@
 # - Q: optional scaling matrix for the Langeving diffusion. Needed only if useLangevin == true. Currently not used.
 # - score: gradient of the target density. Needed only if useLangevin == true.
 # - hessian: hessian of the target density. Needed only if useLangevin == true.
+# - B: number of nearest neighbours to be used to construct the covariance. Relevant is useLangevin == false.
+#      By default B = n
+# - maxMix: maximum number of mixture components. When it is reached the mixture growth will slow down drastically,
+#           but it will not stop entirely. By default maxMix = Inf.
 #
 ### OUTPUT
 # The output is a dictionary with the following entries
@@ -54,7 +58,7 @@
 function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
               df = 3, trunc = true, quant = 0.01, useLangevin = true, verbose = true,
               targetESS = 1-1e-3, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing,
-              maxMix = Inf)
+              maxMix = Inf, B = nothing)
 
   # Safety checks
   if useLangevin && (t₀ == nothing || score == nothing || hessian == nothing)
@@ -62,6 +66,8 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
     error("If useLangevin == true you have to specify ϵ, lag, Q, score and hessian.")
 
   end
+
+  if B == nothing   B = n;   end
 
   # Sample from prior
   x = rPrior( n₀ );
@@ -97,20 +103,22 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
   neigh = NaN;
 
   # Calculate importance weights
-  w = exp( dLogTar[1:n₀] ) ./ exp( dLogPrior[1:n₀] );
+  logw = dLogTar[1:n₀] .- dLogPrior[1:n₀];
 
   # Find sample with maximum weight and indicate that it must be added to the mixture
-  μ = X₀[:, findfirst( w .== maximum(w) )];
+  μ = X₀[:, findfirst( logw .== maximum(logw) )];
   add = true;
 
   # (Optionally) Truncate importance weights
   if trunc
 
-    w = min(w, sqrt(length(w)));
+    logw = min(logw, log(length(w))/2);
 
   end
 
-  wn = w / sum( w );
+  # Calculate normalized weigths using sumExpTrick.
+  tmp = maximum( logw );
+  wn = exp(logw - tmp) / sum( exp(logw - tmp) );
 
   ESS = zeros( niter + 1 );
   ESS[1] = ( 1 / sum( wn.^2 ) ) / n₀;
@@ -149,7 +157,7 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
         # but this does not quite work in high dimensions.
          tmpw = wn.*0 + 1/length(wn);
          X_old = X₀[:, 1:(n₀ + n*(ii-1))];
-         Σ = nnCov(μ, tmpw, X_old, cov(X_old'), n)[:, :, 1];
+         Σ = nnCov(μ, tmpw, X_old, cov(X_old'), min(B, n₀ + n*(ii-1)))[:, :, 1];
 
       end
 
@@ -236,19 +244,21 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
     # @printf("%f \n" , mean(abs(dimp - dimpCheck)));
 
     # Calculate importance weights
-    w = exp(dLogTar[1:stop]) ./ dimp;
+    logw = dLogTar[1:stop] .- log(dimp);
 
     # Find sample with maximum weight
-    μ = X₀[:, findfirst( w .== maximum(w) )];
+    μ = X₀[:, findfirst( logw .== maximum(logw) )];
 
     # (Optionally) Truncate importance weights
     if trunc
 
-      w = min(w, sqrt(length(w)));
+      logw = min(logw, log(length(w))/2);
 
     end
 
-    wn = w / sum( w );
+    # Calculate normalized weigths using sumExpTrick.
+    tmp = maximum( logw );
+    wn = exp(logw - tmp) / sum( exp(logw - tmp) );
 
     dimMix[ii] = nmix;
 
@@ -296,7 +306,7 @@ end
 function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
               df = 3, trunc = true, quant = 0.01, useLangevin = true, verbose = true,
               targetESS = 1-1e-3, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing,
-              maxMix = Inf
+              maxMix = Inf, B = nothing
               )
 
   # Safety checks
@@ -305,6 +315,8 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
     error("If useLangevin == true you have to specify ϵ, lag, Q, score and hessian.")
 
   end
+
+  if B == nothing   B = n;   end
 
   # Sample from prior
   x = rPrior( n₀ );
@@ -341,20 +353,22 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
   neigh = NaN;
 
   # Calculate importance weights
-  w = exp( dLogTar[1:n₀] ) ./ exp( dLogPrior[1:n₀] );
+  logw = dLogTar[1:n₀] .- dLogPrior[1:n₀];
 
   # Find sample with maximum weight and indicate that it must be added to the mixture
-  μ = X₀[:, findfirst( w .== maximum(w) )];
+  μ = X₀[:, findfirst( logw .== maximum(logw) )];
   add = true;
 
   # (Optionally) Truncate importance weights
   if trunc
 
-    w = min(w, sqrt(length(w)));
+    logw = min(logw, log(length(w))/2);
 
   end
 
-  wn = w / sum( w );
+  # Calculate normalized weigths using sumExpTrick.
+  tmp = maximum( logw );
+  wn = exp(logw - tmp) / sum( exp(logw - tmp) );
 
   ESS = zeros( niter + 1 );
   ESS[1] = ( 1 / sum( wn.^2 ) ) / n₀;
@@ -393,7 +407,7 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
        # but this does not quite work in high dimensions.
         tmpw = wn.*0 + 1/length(wn);
         X_old = X₀[:, 1:(n₀ + n*(ii-1))];
-        Σ = nnCov(μ, tmpw, X_old, cov(X_old'), n)[:, :, 1];
+        Σ = nnCov(μ, tmpw, X_old, cov(X_old'), min(B, n₀ + n*(ii-1)))[:, :, 1];
 
       end
 
@@ -482,19 +496,21 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
     # @printf("%f \n" , mean(abs(dimp - dimpCheck)));
 
     # Calculate importance weights
-    w = exp(dLogTar[1:stop]) ./ dimp;
+    logw = dLogTar[1:stop] .- log(dimp);
 
     # Find sample with maximum weight
-    μ = X₀[:, findfirst( w .== maximum(w) )];
+    μ = X₀[:, findfirst( logw .== maximum(logw) )];
 
     # (Optionally) Truncate importance weights
     if trunc
 
-      w = min(w, sqrt(length(w)));
+      logw = min(logw, log(length(w))/2);
 
     end
 
-    wn = w / sum( w );
+    # Calculate normalized weigths using sumExpTrick.
+    tmp = maximum( logw );
+    wn = exp(logw - tmp) / sum( exp(logw - tmp) );
 
     dimMix[ii] = nmix;
 
