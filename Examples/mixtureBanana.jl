@@ -131,11 +131,14 @@ function dTarget(x; Log = false)
 
   nmix = length( bananicity );
 
-  out = reduce(hcat, map(ii -> dBanana(x, sigmaBan[ii], bananicity[ii], banShiftX[ii], banShiftY[ii]; Log=false), 1:1:nmix) );
+  out = reduce(hcat, map(ii -> dBanana(x, sigmaBan[ii], bananicity[ii],
+                                          banShiftX[ii], banShiftY[ii]; Log=true), 1:1:nmix) );
 
-  out = out * bananaW;
+  # Weighted sum exp trick
+  z = maximum(out, 2)[:];
+  out = z + log( exp(broadcast(-, out, z)) * bananaW );
 
-  if( Log ) out = log( out ) end
+  if( !Log ) out = exp( out ) end
 
   return( out );
 
@@ -151,16 +154,23 @@ function score(x; Log = false)
 
   nmix = length( bananicity );
 
-  p = reduce(hcat, map(ii -> dBanana(x, sigmaBan[ii], bananicity[ii], banShiftX[ii], banShiftY[ii]; Log=false), 1:1:nmix) );
-  p ./= p * bananaW;
+  # Densities and gradients, of each mixture density and for each column of x
+  logpᵢ = reduce(hcat, map(ii -> dBanana(x, sigmaBan[ii], bananicity[ii],
+                                        banShiftX[ii], banShiftY[ii]; Log=true), 1:1:nmix) );
 
-  grad = map(ii -> banScore(x, sigmaBan[ii], bananicity[ii], banShiftX[ii], banShiftY[ii]), 1:1:nmix);
+  ∇pᵢ = map(ii -> banScore(x, sigmaBan[ii], bananicity[ii], banShiftX[ii], banShiftY[ii]), 1:1:nmix);
+
+  # Weighted sum exp trick
+  z = maximum(logpᵢ, 2)[:];
+  logΣwᵢpᵢ = z + log( exp(broadcast(-, logpᵢ, z)) * bananaW );
+
+  tmpw = exp( broadcast(-, logpᵢ, logΣwᵢpᵢ) );
 
   out = zeros(d, n);
 
   for ii = 1:nmix
 
-    out += ( grad[ii]' .* p[:, ii][:] * bananaW[ii] )';
+    out += ( ∇pᵢ[ii]' .* tmpw[:, ii][:] * bananaW[ii] )';
 
   end
 
@@ -197,8 +207,14 @@ function hessian(x; Log = false)
 
   nmix = length( bananicity );
 
-  p = reduce(vcat, map(ii -> dBanana(x, sigmaBan[ii], bananicity[ii], banShiftX[ii], banShiftY[ii]; Log=false), 1:1:nmix) );
-  u = (p  .* bananaW) / dot(p, bananaW);
+  logpᵢ = reduce(vcat, map(ii -> dBanana(x, sigmaBan[ii], bananicity[ii],
+                                        banShiftX[ii], banShiftY[ii]; Log=true), 1:1:nmix) );
+
+  # Weighted sum exp trick
+  z = maximum(logpᵢ);
+  logΣwᵢpᵢ = z + log( dot(exp(logpᵢ - z), bananaW) );
+
+  u = exp( log(bananaW) + logpᵢ - logΣwᵢpᵢ );
 
   gr = map(ii -> banScore(x, sigmaBan[ii], bananicity[ii], banShiftX[ii], banShiftY[ii]), 1:1:nmix);
   hess = map(ii -> banHess(x, sigmaBan[ii], bananicity[ii], banShiftX[ii], banShiftY[ii]), 1:1:nmix);
