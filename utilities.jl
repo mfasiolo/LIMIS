@@ -312,7 +312,7 @@ function expESS(μt, μp, Σt, Σp)
   #                        exp( -0.5 * dot(μp .- μt, (Σt/2 - Σp) \ (μp .- μt) ) )
 
   # Computationally faster version
-  varW =  det(Σp) / sqrt(det(Σt)) /  sqrt(det(ΣDif))  * exp( dot(μp .- μt, ΣDif \ (μp .- μt) ) )
+  varW =  exp( logdet(Σp) - 0.5*logdet(Σt) - 0.5*logdet(ΣDif)  + dot(μp .- μt, ΣDif \ (μp .- μt) ) );
 
   # @printf("ESS = %f \n", 1. / varW);
 
@@ -320,19 +320,31 @@ function expESS(μt, μp, Σt, Σp)
 
 end
 
-# Test
+# Test 1
 muT = [0., 0.];
 sigT = 9. * [1 -0.5; -0.5 1];
 muP = [2., 1.]
 sigP = 20. * [1 -0.3; -0.3 1];
 
-N = 100000;
+N = 1000000;
 x = rand(MvNormal(muP, sigP), N);
 
 w = pdf(MvNormal(muT, sigT), x) ./ pdf(MvNormal(muP, sigP), x);
 1 / mean(w.^2.)
 expESS(muT, muP, sigT, sigP)
 
+# Test 2
+muT = rand(10)
+sigT = eye(10);
+muP = rand(10)
+sigP = eye(10);
+
+N = 1000000;
+x = rand(MvNormal(muP, sigP), N);
+
+w = pdf(MvNormal(muT, sigT), x) ./ pdf(MvNormal(muP, sigP), x);
+1 / mean(w.^2.)
+expESS(muT, muP, sigT, sigP)
 
 #######
 # Choosing Langevin step length so that the chosen ESS is achieved
@@ -375,7 +387,7 @@ function matchESS(μ₀, Σ₀, score, hessian, dTarget, targetESS; rel_tol = 1e
 
     catch end
 
-    # @printf("Δ  = %f", Δ)
+    #@printf("δt  = %f ", δt); @printf("Δ  = %f \n", Δ)
 
     return Δ
 
