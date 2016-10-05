@@ -9,6 +9,8 @@ using Distances;
 using Roots;
 using HDF5, JLD;
 using Klara;
+using DataFrames;
+using RData;
 
 # Loading necessary functions
 include("utilities.jl");
@@ -18,38 +20,25 @@ include("IMIS.jl");
 include("tuneIMIS.jl");
 include("fastMix.jl");
 
-idim = 2;
+#idim = 1;
 
-d = [2; 5; 10; 20; 80][idim];
-niter = [200, 200, 200, 200, 200][idim];
-# quL = [0.25, 0.4, 0.01, 0.000001, 0.0000000001][idim];
-# quN = [0.05, 0.05, 0.15, 0.99, 0.99][idim];
-t₀ = [1, 1, 2, 3, 5][idim];
-Bmult = [1, 1, 1, 4, 10][idim];
-thins = [1, 1, 1, 1, 1][idim]; # thining for MALA
+#d = [2; 5; 10; 20; 50][idim];
+#niter = [50, 50, 50, 50, 50][idim];
+#t₀ = [1, 1, 1, 1, 1][idim];
+#Bmult = [1, 1, 1, 2, 5][idim];
+#thins = [1, 1, 1, 1, 1][idim]; # thinning for MALA
 
-# Mixture of Bananas
-banDim = copy(d);
-bananicity = [0.2, -0.03, 0.1, 0.1, 0.1, 0.1];
-sigmaBan = [1, 6, 4, 4, 1, 1];
-banShiftX = [0, 0, 7, -7, 7, -7];
-banShiftY = [0, -5, 7, 7, 7.5, 7.5];
-nmix = length(bananicity);
-bananaW = [1, 4, 2.5, 2.5, 0.5, 0.5]; #ones( nmix ) / nmix #[0.2, 0.6, 0.2]; #;
-bananaW = bananaW / sum(bananaW);
+niter = 100;
+t₀ = 1;
+Bmult = 20;
+thins = 1;
 
-include("Examples/mixtureBanana.jl");
+include("Examples/logistic_regression.jl");
 
 ### Set up
 #srand(542625);
 n = 100 * d;
 n₀ = 1000 * d;
-
-# Create importance mixture
-μMix = vcat([0. 0. 7 -7; -6. 0 8.2 8.2], zeros(d-2, 4));
-ΣMix = zeros(d, d, 4);
-for ii = 1:4   ΣMix[:, :, ii] = -2*inv(hessian(μMix[:, ii][:]));   end
-wMix = bananaW[1:4] / sum(bananaW[1:4]);
 
 # MALA setup
 function launchMALAjob(nouse)
@@ -74,7 +63,8 @@ function launchMALAjob(nouse)
 
   out = output(job);
 
-  out = Dict{Any,Any}( "value" => out.value, "logtarget" => out.logtarget);
+  out = Dict{Any,Any}( "value" => out.value,
+                       "logtarget" => out.logtarget);
 
   return out;
 

@@ -34,128 +34,11 @@ include("IMIS.jl");
 include("tuneIMIS.jl");
 include("fastMix.jl");
 
-###########################
-####### BANANA
-###########################
-
-### Banana
-banSh = [10.; 5];
-bananicity = 0.03;
-sigmaBan = 6;
-d = 2;
-
-#include("Examples/newBanana.jl");
-
-# Mixture of Bananas
-d = 2
-banDim = copy(d);
-bananicity = [0.2, -0.03, 0.1, 0.1, 0.1, 0.1];
-sigmaBan = [1, 6, 4, 4, 1, 1];
-banShiftX = [0, 0, 7, -7, 7, -7];
-banShiftY = [0, -5, 7, 7, 7.5, 7.5];
-nmix = length(bananicity);
-bananaW = [1, 4, 2.5, 2.5, 0.5, 0.5]; #ones( nmix ) / nmix #[0.2, 0.6, 0.2]; #;
-bananaW = bananaW / sum(bananaW)
-
-include("Examples/mixtureBanana.jl");
-
-### Set up
-srand(525)
-niter = 200;
-n = 100 * d;
-n₀ = 1000 * d;
-t₀ = log( ( (4/(d+2)) ^ (1/(d+4)) * niter ^ -(1/(d+4)) )^2 + 1 );
-
-### Langevin IMIS
-resL = IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
-            df = 3, trunc = true, quant = 0.01, useLangevin = true, verbose = true,
-            t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2
-            );
-
-resL_R = IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
-            df = 3, trunc = true, quant = 0.25, useLangevin = true, verbose = true,
-            t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2
-            );
-
-### Nearest Neighbour IMIS
-resN = IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
-            df = 3, trunc = true,  quant = 0.01, useLangevin = false, verbose = true);
-
-resN_R = IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
-              df = 3, trunc = true,  quant = 0.25, useLangevin = false, verbose = true);
-
-### Save results to file
-ESS = { resL["ESS"], resL_R["ESS"], resN["ESS"], resN_R["ESS"] };
-dimMix = { resL["dimMix"], resL_R["dimMix"], resN["dimMix"], resN_R["dimMix"] };
-res = {ESS, dimMix};
-
-#file = jldopen("Data/Banana_2d.jld", "w");
-#@write file res;
-#close(file);
-
-### Plots
-fig = figure();
-subplot(121);
-grid("on");
-title("Effective Sample Size (ESS)");
-xlabel("Iteration")
-ylabel("ESS")
-plot(0:1:(niter), resL["ESS"], label = "LIMIS");
-plot(0:1:(niter), resL_R["ESS"], label = "LIMIS MR");
-plot(0:1:(niter), resN["ESS"], label = "NIMIS");
-plot(0:1:(niter), resN_R["ESS"], label = "NIMIS MR");
-legend(loc="lower right",fancybox="true")
-
-subplot(122);
-grid("on");
-title("Number of mixture components (NC)");
-xlabel("Iteration")
-ylabel("NC")
-plot(1:niter, resL["dimMix"]);
-plot(1:niter, resL_R["dimMix"]);
-plot(1:niter, resN["dimMix"]);
-plot(1:niter, resN_R["dimMix"]);
-
-########################
-##### Getting some estimates
-########################
-
-resL = IMIS2(400, n, n₀, dTarget, dPrior, rPrior;
-            df = 3, trunc = true, quant = 0.25, useLangevin = true, verbose = true,
-            t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2
-            );
-
-ns = size( resL["X₀"] )[2];
-
-trueSam = ( rBanana(10^7) )';
-iSam = resL["X₀"];
-
-# Mean
-iMean = iSam * resL["w"] / ns
-mean(trueSam, 2)
-
-# Variance
-((iSam .- iMean).^2) * resL["w"] / ns
-var(trueSam, 2)
-
-###############
-trueSam = ( rBanana(10^7) )';
-
-a = hcat( rPrior(n₀), rGausMix(ns-n₀, resL["μ₀"], resL["Σ₀"]; df = 3, w = resL["wmix"]));
-
-# a = resL["X₀"];
-dimp = ( n₀ * dPrior(a)  + (ns - n₀) * dGausMix(a, resL["μ₀"], resL["Σ₀"]; df = 3, w = resL["wmix"])[1] ) / ns;
-w = dTarget(a) ./ dimp ;
-
-aMean = a * w / ns
-((a .- aMean).^2) * w / ns
-var(trueSam, 2)
-
-
-
 ##################################################################################
 ##############   Plotting the importance density
 ##################################################################################
+
+blas_set_num_threads(1);
 
 # Mixture of Bananas
 d = 2
@@ -168,18 +51,7 @@ nmix = length(bananicity);
 bananaW = [1, 4, 2.5, 2.5, 0.5, 0.5]; #ones( nmix ) / nmix #[0.2, 0.6, 0.2]; #;
 bananaW = bananaW / sum(bananaW);
 
-# d = 2
-# banDim = copy(d);
-# bananicity = [0.03, 0.03];
-# sigmaBan = [6, 6];
-# banShiftX = [0, 0];
-# banShiftY = [0, 0];
-# nmix = length(bananicity);
-# bananaW = [1, 4]; #ones( nmix ) / nmix #[0.2, 0.6, 0.2]; #;
-# bananaW = bananaW / sum(bananaW)
-
 include("Examples/mixtureBanana.jl");
-# include("Examples/Gaussian.jl");
 
 n = 100 * d;
 n₀ = 1000 * d;
@@ -195,14 +67,6 @@ resL1 = IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
             t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2
             );
 
-#### 3 Tune Imis
-tseq = .5:0.5:6;
-expVar = tuneIMIS(resL1, tseq; frac = 1., verbose = true);
-plot(tseq, expVar);
-
-# plot(0:1:(niter), resL1["ESS"], label = "LIMIS");
-plot(1:niter, resL1["dimMix"]);
-
 #### 2
 niter = 200;
 t₀ = 1.; #log( ( (4/(d+2)) ^ (1/(d+4)) * niter ^ -(1/(d+4)) )^2 + 1 );
@@ -213,8 +77,6 @@ resL2 = IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
             t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2
             );
 
-plot(0:1:(niter), resL2["ESS"], label = "LIMIS");
-
 #### 3 NIMIS
 niter = 200;
 
@@ -223,8 +85,6 @@ resL3 = IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
             df = 3, trunc = true, quant = 0., useLangevin = false, verbose = true,
             t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2
             );
-
-plot(0:1:(niter), resL3["ESS"], label = "LIMIS");
 
 ##### 4 LIMIS 20 Dimensions
 # Mixture of Bananas
@@ -239,7 +99,6 @@ bananaW = [1, 4, 2.5, 2.5, 0.5, 0.5]; #ones( nmix ) / nmix #[0.2, 0.6, 0.2]; #;
 bananaW = bananaW / sum(bananaW);
 
 include("Examples/mixtureBanana.jl");
-# include("Examples/Gaussian.jl");
 
 n = 100 * d;
 n₀ = 1000 * d;
@@ -342,180 +201,120 @@ xlabel("x1")
 ylabel("x2")
 
 contour(x1, x2, d_lik4);
-# tmp = resL4["μOrig"]';
-# good = (tmp[:, 1] .> x1[1])[:] & (tmp[:, 1] .< x1[end])[:] & (tmp[:, 2] .> x2[1])[:] & (tmp[:, 2] .< x2[end])[:];
-# scatter(tmp[good, 1][:], tmp[good, 2][:]);
-# tmp = resL4["μ₀"]';
-# good = (tmp[:, 1] .> x1[1])[:] & (tmp[:, 1] .< x1[end])[:] & (tmp[:, 2] .> x2[1])[:] & (tmp[:, 2] .< x2[end])[:];
-# scatter(tmp[good, 1][:], tmp[good, 2][:], c = "red");
+tmp = resL4["μOrig"]';
+good = (tmp[:, 1] .> x1[1])[:] & (tmp[:, 1] .< x1[end])[:] & (tmp[:, 2] .> x2[1])[:] & (tmp[:, 2] .< x2[end])[:];
+scatter(tmp[good, 1][:], tmp[good, 2][:]);
+tmp = resL4["μ₀"]';
+good = (tmp[:, 1] .> x1[1])[:] & (tmp[:, 1] .< x1[end])[:] & (tmp[:, 2] .> x2[1])[:] & (tmp[:, 2] .< x2[end])[:];
+scatter(tmp[good, 1][:], tmp[good, 2][:], c = "red");
 
 ##################################################################################
 ######################## Monte Carlo Experiment
 ##################################################################################
 
-# @everywhere cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code");
+#@everywhere cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code");
 @everywhere cd("$(homedir())/Dropbox/Work/Liverpool/IMIS/Julia_code");
 
 include("paralSetUp.jl");
 @everywhere include("paralSetUp.jl");
 @everywhere blas_set_num_threads(1);
 
-nrep = 10;
+nrep = 16;
+
+# Setting seed in parallel
+srand(525);
+RND = rand(1:1:1000000, nrep);
+pmap(x_ -> srand(x_), RND);
 
 ### Langevin IMIS
 resL = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
-            df = 3, trunc = true, quant = 0., useLangevin = true, verbose = false,
+            df = 3, trunc = false, quant = 0., useLangevin = true, verbose = true,
             t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2),
             1:1:nrep);
 
-# + mixture reduction
-#resL_R = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
-#            df = 3, trunc = true, quant = quL, useLangevin = true, verbose = false,
-#            t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2),
-#            1:1:nrep);
-
 ### NIMIS
 resN = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
-            df = 3, trunc = true,  quant = 0., useLangevin = false, verbose = false, B = Bmult*n),
+            df = 3, trunc = false,  quant = 0., useLangevin = false, verbose = true, B = Bmult*n),
             1:1:nrep);
 
 ### Gaussian Mixture importance sampling
 resMix = [];
 for ii = 1:nrep
   rtmp = rGausMix(n₀ + n*niter, μMix, ΣMix; df = 3, w = wMix);
-  wtmp = dTarget(rtmp)./dGausMix(rtmp, μMix, ΣMix; df = 3, w = wMix)[1][:];
-  esstmp = ( 1 / sum( (wtmp/sum(wtmp)).^2 ) ) / (n₀ + n*niter);
-  resMix = [resMix; Dict{Any,Any}("X₀" => rtmp, "logw" => log(wtmp), "ESS" => esstmp)];
+  wtmp = dTarget(rtmp; Log = true) - dGausMix(rtmp, μMix, ΣMix; df = 3, w = wMix, Log = true)[1][:];
+  ctmp = sumExpTrick(wtmp);
+  wtmpD = exp(wtmp - log(ctmp))
+  esstmp = ( 1 / sum( wtmpD.^2 ) ) / (n₀ + n*niter);
+  resMix = [resMix; Dict{Any,Any}("X₀" => rtmp, "logw" => wtmp, "ESS" => esstmp)];
 end
 
 ### MALA
 resMALA = pmap(nouse -> launchMALAjob(nouse), 1:1:nrep);
 
+################
+## Saving results
+################
+
 ####
-# Diagnostics
+# A) Saving all samples
 ####
 
-ESSL = reduce(hcat, map(x_ -> x_["ESS"][:], resL) )';
-#ESSL_R = reduce(hcat, map(x_ -> x_["ESS"][:], resL_R) )';
-ESSN = reduce(hcat, map(x_ -> x_["ESS"][:], resN) )';
-ESSMix = reduce(hcat, map(x_ -> x_["ESS"], resMix) )';
-# ESSN_R = reduce(hcat, map(x_ -> x_["ESS"][:], resN_R) )';
+### Saving results#
+#res = Dict{Any,Any}( "L" => resL, "N" => resN, "Mix" => resMix, "MALA" => resMALA );
 
-sizeL = reduce(hcat, map(x_ -> x_["dimMix"][:], resL) )';
-#sizeL_R = reduce(hcat, map(x_ -> x_["dimMix"][:], resL_R) )';
-sizeN = reduce(hcat, map(x_ -> x_["dimMix"][:], resN) )';
-# sizeN_R = reduce(hcat, map(x_ -> x_["dimMix"][:], resN_R) )';
 
-fig = figure();
-subplot(121);
-grid("on");
-title("Effective Sample Size (ESS)");
-xlabel("Iteration")
-ylabel("ESS")
-plot(0:1:(niter), mean(ESSL, 1)[:], label = "LIMIS")
-#plot(0:1:(niter), mean(ESSL_R, 1)[:], label = "LIMIS_R")
-plot(0:1:(niter), mean(ESSN, 1)[:], label = "NIMIS")
-plot(0:1:(niter), rep(mean(ESSMix, 1)[:], niter+1), label = "GausMix")
-# plot(0:1:(niter), mean(ESSN_R, 1)[:], label = "NIMIS_R")
-legend(loc="lower right",fancybox="true")
+#for ii = 1:nrep # Need to do this, otherwise JLD.save crashes
+#  res["L"][ii]["control"]["score"] = nothing;
+#  res["L"][ii]["control"]["hessian"] = nothing;
+#end
 
-subplot(122);
-grid("on");
-title("Cost per sample");
-xlabel("Iteration")
-ylabel("Cost")
-plot(0:1:(niter), ([0; mean(sizeL, 1)[:]] + 6) ./ mean(ESSL, 1)[:], label = "LIMIS")
-#plot(0:1:(niter), ([0; mean(sizeL_R, 1)[:]] + 6) ./ mean(ESSL_R, 1)[:], label = "LIMIS_R")
-plot(0:1:(niter), ([0; mean(sizeN, 1)[:]] + 6) ./ mean(ESSN, 1)[:], label = "NIMIS")
-legend(loc="lower right",fancybox="true")
+# JLD.save("Data/Banana_Mix_5d.jld", "data", res);
+#res = load("Data/Banana_Mix_20d.jld")["data"];
 
-fig = figure();
-grid("on");
-title("Number of mixture components (NC)");
-xlabel("Iteration")
-ylabel("NC")
-plot(1:(niter), mean(sizeL, 1)[:], label = "LIMIS")
-#plot(1:(niter), mean(sizeL_R, 1)[:], label = "LIMIS_R")
-plot(1:(niter), mean(sizeN, 1)[:], label = "NIMIS")
-# plot(1:(niter), mean(sizeN_R, 1)[:], label = "NIMIS_R")
+#plot(resMALA[1].value[1, :][:])
 
-#############################
-# Checking estimates
-#############################
+####
+# B) Saving only summaries
+####
+truX = rBanMix(2e6);
 
-######
-## Marginal accuracies
-######
+# Marginal density of x₁
+@everywhere h = 0.2
+@everywhere δ = 0.1;
+@everywhere ySeq = -20:δ:20;
+densTRUE1 = kde(ySeq, truX[:, 1][:], h);
 
-truX = rBanMix(1e6);
+densL1 = pmap(O -> kde(ySeq, O["X₀"][1, :][:], h; logw = O["logw"]), resL);
+densN1 = pmap(O -> kde(ySeq, O["X₀"][1, :][:], h; logw = O["logw"]), resN);
+densMix1 = pmap(O -> kde(ySeq, O["X₀"][1, :][:], h; logw = O["logw"]), resMix);
+densMala1 = pmap(O -> kde(ySeq, O["value"][1, :][:], h), resMALA);
 
-### Dimension 1
-δ = 0.1;
-ySeq = -20:δ:20;
-densTRUE = kde(ySeq, truX[:, 1][:], 0.1);
+dens1_res = Dict{Any,Any}( "L" => densL1, "N" => densN1,
+                           "Mix" => densMix1, "MALA" => densMala1, "Truth" => densTRUE1);
 
-h = 0.2
-densL = map(O -> kde(ySeq, O["X₀"][1, :][:], h; logw = O["logw"]), resL);
-densN = map(O -> kde(ySeq, O["X₀"][1, :][:], h; logw = O["logw"]), resN);
-densMix = map(O -> kde(ySeq, O["X₀"][1, :][:], h; logw = O["logw"]), resMix);
-densMala = map(O -> kde(ySeq, O.value[1, :][:], h), resMALA);
+# Marginal density of x₂
+@everywhere h = 0.1;
+@everywhere δ = 0.1;
+@everywhere ySeq = -11:δ:15;
+densTRUE2 = kde(ySeq, truX[:, 2][:], h);
 
-ii = 1
-plot(ySeq, densL[ii], label = "LIMIS");
-plot(ySeq, densN[ii], label = "NIMIS");
-plot(ySeq, densMix[ii], label = "GausMix");
-plot(ySeq, densMala[ii], label = "MALA");
-plot(ySeq, densTRUE, label = "Truth");
-legend(loc="lower center",fancybox="true");
+densL2 = pmap(O -> kde(ySeq, O["X₀"][2, :][:], h; logw = O["logw"]), resL);
+densN2 = pmap(O -> kde(ySeq, O["X₀"][2, :][:], h; logw = O["logw"]), resN);
+densMix2 = pmap(O -> kde(ySeq, O["X₀"][2, :][:], h; logw = O["logw"]), resMix);
+densMala2 = pmap(O -> kde(ySeq, O["value"][2, :][:], h), resMALA);
 
-maccL1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL);
-maccN1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densN);
-maccMix1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMix);
-maccMala1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMala);
-hcat(maccL1, maccN1, maccMix1, maccMala1)
+dens2_res = Dict{Any,Any}( "L" => densL2, "N" => densN2,
+                           "Mix" => densMix2, "MALA" => densMala2, "Truth" => densTRUE2);
 
-### Dimension 2
-δ = 0.1;
-ySeq = -11:δ:15;
-densTRUE = kde(ySeq, truX[:, 2][:], 0.05);
+### Means of Gaussian dimensions
+muL = reduce(hcat, pmap(O -> WmeanExpTrick(O["X₀"][3:end, :], O["logw"]), resL));
+muN = reduce(hcat, pmap(O -> WmeanExpTrick(O["X₀"][3:end, :], O["logw"]), resN));
+muMix = reduce(hcat, pmap(O -> WmeanExpTrick(O["X₀"][3:end, :], O["logw"]), resMix));
+muMala = reduce(hcat, pmap(O -> mean(O["value"][3:end, :], 2), resMALA));
 
-h = 0.1;
-densL = map(O -> kde(ySeq, O["X₀"][2, :][:], h; logw = O["logw"]), resL);
-densN = map(O -> kde(ySeq, O["X₀"][2, :][:], h; logw = O["logw"]), resN);
-densMix = map(O -> kde(ySeq, O["X₀"][2, :][:], h; logw = O["logw"]), resMix);
-densMala = map(O -> kde(ySeq, O.value[2, :][:], h), resMALA);
+mean_res = Dict{Any,Any}( "L" => muL, "N" => muN, "Mix" => muMix, "MALA" => muMala);
 
-ii = 1
-plot(ySeq, densL[ii], label = "LIMIS");
-plot(ySeq, densN[ii], label = "NIMIS");
-plot(ySeq, densMix[ii], label = "GausMix");
-plot(ySeq, densMala[ii], label = "MALA");
-plot(ySeq, densTRUE, label = "Truth");
-legend(loc="top left",fancybox="true");
-
-maccL1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densL);
-maccN1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densN);
-maccMix1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMix);
-maccMala1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - densTRUE)), densMala);
-hcat(maccL1, maccN1, maccMix1, maccMala1)
-
-######
-## Mean and variance of "Gaussian" dimensions
-######
-
-### Means summed across dimensions
-muL = reduce(hcat, map(O -> WmeanExpTrick(O["X₀"][3:d, :], O["logw"]), resL));
-muN = reduce(hcat, map(O -> WmeanExpTrick(O["X₀"][3:d, :], O["logw"]), resN));
-muMix = reduce(hcat, map(O -> WmeanExpTrick(O["X₀"][3:d, :], O["logw"]), resMix));
-muMala = reduce(hcat, map(O -> mean(O.value[3:d, :], 2), resMALA));
-
-tmp = hcat(sum(muL, 1)', sum(muN, 1)', sum(muMix, 1)', sum(muMala, 1)');
-
-mean(tmp, 1) # Mean estimates
-mean(tmp.^2, 1) # MSE
-std(tmp, 1) # Standard deviation
-
-### Variances summed across dimensions
+### Variances of Gaussian dimensions
 function uglyFun(x, logw);
 
   logw = logw[:];
@@ -533,28 +332,392 @@ function uglyFun(x, logw);
 
 end
 
-varL = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["logw"]), resL));
-varN = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["logw"]), resN));
-varMix = reduce(hcat, map(O -> uglyFun(O["X₀"][3:d, :], O["logw"]), resMix));
-varMala = reduce(hcat, map(O -> var(O.value[3:d, :], 2), resMALA));
+varL = reduce(hcat, map(O -> uglyFun(O["X₀"][3:end, :], O["logw"]), resL));
+varN = reduce(hcat, map(O -> uglyFun(O["X₀"][3:end, :], O["logw"]), resN));
+varMix = reduce(hcat, map(O -> uglyFun(O["X₀"][3:end, :], O["logw"]), resMix));
+varMala = reduce(hcat, map(O -> var(O["value"][3:end, :], 2), resMALA));
 
-tmp = hcat(sum(varL, 1)', sum(varN, 1)', sum(varMix, 1)', sum(varMala, 1)')
+var_res = Dict{Any,Any}( "L" => varL, "N" => varN, "Mix" => varMix, "MALA" => varMala);
+
+### Normalizing constant
+conL = reduce(hcat, pmap(O -> meanExpTrick(O["logw"]), resL));
+conN = reduce(hcat, pmap(O -> meanExpTrick(O["logw"]), resN));
+conMix = reduce(hcat, pmap(O -> meanExpTrick(O["logw"]), resMix));
+
+con_res = Dict{Any,Any}( "L" => conL, "N" => conN, "Mix" => conMix);
+
+### Effective Sample Size
+ESSL = reduce(hcat, map(O -> O["ESS"][:], resL));
+ESSN = reduce(hcat, map(O -> O["ESS"][:], resN));
+ESSMix = reduce(hcat, map(O -> O["ESS"], resMix))[:];
+
+ESS_res = Dict{Any,Any}( "L" => ESSL, "N" => ESSN, "Mix" => ESSMix);
+
+## Save all results
+all_summaries = Dict{Any,Any}( "d1" => dens1_res, "d2" => dens2_res,
+                               "mu" => mean_res, "varG" => var_res, "con" => con_res,
+                               "ESS" => ESS_res );
+
+JLD.save("Data/Banana_Mix_5D.jld", "all_summaries", all_summaries);
+
+
+#############################
+# Checking summaries
+#############################
+
+# Load data
+all_data = load("Data/Banana_Mix_5D.jld")["all_summaries"];
+
+# 1) First marginal
+tmp = all_data["d1"];
+δ = 0.1;
+ySeq = -20:δ:20;
+
+ii = 1
+plot(ySeq, tmp["L"][ii], label = "LIMIS");
+plot(ySeq, tmp["N"][ii], label = "NIMIS");
+plot(ySeq, tmp["Mix"][ii], label = "GausMix");
+plot(ySeq, tmp["MALA"][ii], label = "MALA");
+plot(ySeq, tmp["Truth"], label = "Truth");
+legend(loc="lower center",fancybox="true");
+
+maccL1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - tmp["Truth"])), tmp["L"]);
+maccN1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - tmp["Truth"])), tmp["N"]);
+maccMix1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - tmp["Truth"])), tmp["Mix"]);
+maccMala1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - tmp["Truth"])), tmp["MALA"]);
+tmp = Array{Float32}( hcat(maccL1, maccN1, maccMix1, maccMala1) )
+
+mean(tmp, 1)
+minimum(tmp, 1)
+
+# 2) Second marginal
+tmp = all_data["d2"];
+δ = 0.1;
+ySeq = -11:δ:15;
+
+ii = 1
+plot(ySeq, tmp["L"][ii], label = "LIMIS");
+plot(ySeq, tmp["N"][ii], label = "NIMIS");
+plot(ySeq, tmp["Mix"][ii], label = "GausMix");
+plot(ySeq, tmp["MALA"][ii], label = "MALA");
+plot(ySeq, tmp["Truth"], label = "Truth");
+legend(loc="lower center",fancybox="true");
+
+maccL1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - tmp["Truth"])), tmp["L"]);
+maccN1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - tmp["Truth"])), tmp["N"]);
+maccMix1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - tmp["Truth"])), tmp["Mix"]);
+maccMala1 = map(_d -> 1 - 0.5 * δ * sum(abs(_d - tmp["Truth"])), tmp["MALA"]);
+tmp = hcat(maccL1, maccN1, maccMix1, maccMala1)
+
+tmp = Array{Float32}( hcat(maccL1, maccN1, maccMix1, maccMala1) )
+
+mean(tmp, 1)
+minimum(tmp, 1)
+
+# 3) Means summed across Gaussian dimensions
+tmp = all_data["mu"];
+
+tmp = hcat(sum(tmp["L"], 1)', sum(tmp["N"], 1)', sum(tmp["Mix"], 1)', sum(tmp["MALA"], 1)')
+
+nrep = size(tmp)[1];
+mean(tmp, 1) # Mean estimates
+sqrt( mean(tmp.^2, 1) ) # RMSE
+diag(cov(tmp) * (nrep-1) / nrep)[:] ./ mean(tmp.^2, 1)[:] # Ratio VAR / MSE
+
+# 4) Variances summed across Gaussian dimensions
+tmp = all_data["varG"];
+
+tmp = hcat(sum(tmp["L"], 1)', sum(tmp["N"], 1)', sum(tmp["Mix"], 1)', sum(tmp["MALA"], 1)')
+
+dG = size(all_data["varG"]["L"])[1];
+mean(tmp, 1) # Mean estimates
+sqrt( mean((tmp - dG).^2, 1) ) # RMSE
+diag(cov(tmp) * (nrep-1) / nrep)[:] ./ mean((tmp - dG).^2, 1)[:] # Ratio VAR / MSE
+
+# 5) Normalizing constant estimates
+tmp = all_data["con"];
+
+tmp = hcat(tmp["L"]', tmp["N"]', tmp["Mix"]')
 
 mean(tmp, 1) # Mean estimates
-mean((tmp - (d-2)).^2, 1) # MSE
-std(tmp, 1) # Standard deviation
+sqrt( mean((tmp - 1.).^2, 1) ) # RMSE
+(var(tmp, 1) * (nrep-1) / nrep)[:] ./ mean((tmp - 1.).^2, 1)[:] # Ratio VAR / MSE
+
+# 6) Effective Sample Size
+ESS = all_data["ESS"];
+
+tmp = hcat(ESS["L"][end, :][:], ESS["N"][end, :][:], ESS["Mix"])
+
+mean(tmp, 1)
+minimum(tmp, 1)
+
+fig = figure();
+subplot(121);
+grid("on");
+title("Effective Sample Size (ESS)");
+xlabel("Iteration")
+ylabel("ESS")
+niter = size(ESS["L"])[1];
+plot(1:1:(niter), mean(ESS["L"], 2)[:], label = "LIMIS")
+plot(1:1:(niter), mean(ESS["N"], 2)[:], label = "NIMIS")
+plot(1:1:(niter), rep(mean(ESSMix, 1)[:], niter), label = "GausMix")
+legend(loc="lower right",fancybox="true")
+
+
+#############
+## Cost plot
+#############
+
+all_data = load("Data/Banana_Mix_5D.jld")["all_summaries"];
+ESS1 = all_data["ESS"];
+all_data = load("Data/Banana_Mix_20D.jld")["all_summaries"];
+ESS2 = all_data["ESS"];
+all_data = load("Data/Banana_Mix_80D.jld")["all_summaries"];
+ESS3 = all_data["ESS"];
+
+grid("on");
+#title("Cost per sample");
+xlabel("Iteration number j")
+ylabel("log{c(j)}")
+plot(0:1:(200), log( (6:1:206) ./ mean(ESS1["L"], 2)[:] ), label = "5D")
+plot(0:1:(200), log( (6:1:206) ./ mean(ESS2["L"], 2)[:] ), label = "20D")
+plot(0:1:(200), log( (6:1:206) ./ mean(ESS3["L"], 2)[:] ), label = "80D")
+legend(loc="top right",fancybox="true")
+
+
+
+############################################################################################
+############################################################################################
+############################################################################################
+#####                TUNING T
+############################################################################################
+############################################################################################
+############################################################################################
+
+#cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code")
+@everywhere cd("$(homedir())/Dropbox/Work/Liverpool/IMIS/Julia_code");
+
+include("paralSetUp.jl");
+@everywhere include("paralSetUp.jl");
+@everywhere blas_set_num_threads(1);
+
+ncores = 20;
+nrep = 60;
+
+# Setting seed in parallel
+srand(525);
+RND = rand(1:1:1000000, ncores);
+pmap(x_ -> srand(x_), RND);
+
+@everywhere niter = 50;
+
+nlevs = 40;
+timeLevs = linspace(.1, 5, nlevs);
+
+time_out = zeros(nrep, nlevs);
+ESSTUNED_out = zeros(nrep, nlevs);
+ESSL_out = zeros(nrep, nlevs);
+
+for kk = 1:1:nlevs
+
+  # Langevin IMIS
+  resL = pmap(t_ -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
+              df = 3, trunc = false, quant = 0., useLangevin = true, verbose = false,
+              t₀ = t_, score = score, hessian = hessian, targetESS = 1 - 1e-2),
+              rep(timeLevs[kk], nrep));
+
+  # Tune t₀
+  @everywhere tseq = linspace(2., 5., 20);
+  resTune = pmap(x_ -> tuneIMIS(x_, tseq; frac = 0.1, verbose = true), resL);
+
+  # Extract optimal t₀ and mixture mean and covariances
+  tOpt = zeros(nrep);
+  μOpt = Array(Float64, d, niter, nrep);
+  ΣOpt = Array(Float64, d, d, niter, nrep);
+  for ii = 1:1:nrep
+
+    kmin = findfirst( resTune[ii]["expVar"] .== minimum(resTune[ii]["expVar"]) );
+    tOpt[ii] = tseq[kmin];
+    μOpt[:, :, ii] = resTune[ii]["μ"][:, :, kmin];
+    ΣOpt[:, :, :, ii] = resTune[ii]["Σ"][:, :, :, kmin];
+
+  end
+
+  # Try optimized importance mixture
+  resMix = [];
+  for ii = 1:nrep
+    μtmp = hcat(μMix, μOpt[:, :, ii]);
+    Σtmp = cat(3, ΣMix, ΣOpt[:, :, :, ii]);
+    wMixTmp = wMix * 4 * 10;
+    wMixTmp = [wMixTmp; ones(niter)];
+    wMixTmp /= sum(wMixTmp);
+    rtmp = rGausMix(n₀ + n*niter, μtmp, Σtmp; df = 3, w = wMixTmp);
+    wtmp = dTarget(rtmp; Log = true) - dGausMix(rtmp, μtmp, Σtmp; df = 3, w = wMixTmp, Log = true)[1][:];
+    ctmp = sumExpTrick(wtmp);
+    wtmpD = exp(wtmp - log(ctmp))
+    esstmp = ( 1 / sum( wtmpD.^2 ) ) / (n₀ + n*niter);
+    resMix = [resMix; Dict{Any,Any}("X₀" => rtmp, "logw" => wtmp, "ESS" => esstmp)];
+  end
+
+  # Try INITIAL importance mixture
+  resMix0 = [];
+  for ii = 1:nrep
+    μtmp = hcat(μMix, resL[ii]["μ₀"]);
+    Σtmp = cat(3, ΣMix, resL[ii]["Σ₀"]);
+    wMixTmp = wMix * 4 * 10;
+    wMixTmp = [wMixTmp; ones(niter)];
+    wMixTmp /= sum(wMixTmp);
+    rtmp = rGausMix(n₀ + n*niter, μtmp, Σtmp; df = 3, w = wMixTmp);
+    wtmp = dTarget(rtmp; Log = true) - dGausMix(rtmp, μtmp, Σtmp; df = 3, w = wMixTmp, Log = true)[1][:];
+    ctmp = sumExpTrick(wtmp);
+    wtmpD = exp(wtmp - log(ctmp))
+    esstmp = ( 1 / sum( wtmpD.^2 ) ) / (n₀ + n*niter);
+    resMix0 = [resMix0; Dict{Any,Any}("X₀" => rtmp, "logw" => wtmp, "ESS" => esstmp)];
+  end
+
+  time_out[:, kk] = tOpt;
+  ESSL_out[:, kk] = map(x_ -> x_["ESS"][end], resMix0);
+  ESSTUNED_out[:, kk] = map(x_ -> x_["ESS"][end], resMix);
+
+end
+
+tuned = Dict{Any,Any}( "timeOut" => time_out, "timeIn" => timeLevs,
+                       "ESSOut" => ESSTUNED_out, "ESSIn" => ESSL_out);
+
+# JLD.save("Data/tuned_t.jld", "tuned", tuned);
+
+tuned = load("Data/tuned_t.jld")["tuned"];
+
+fig = figure();
+subplot(121);
+grid("on");
+#title("T* VS T_0");
+xlabel("Initial t")
+ylabel("Optimal t")
+plot(tuned["timeIn"], mean(tuned["timeOut"], 1)[:]);
+plot(tuned["timeIn"], mean(tuned["timeOut"], 1)[:] + std(tuned["timeOut"], 1)[:], color = "red");
+plot(tuned["timeIn"], mean(tuned["timeOut"], 1)[:] - std(tuned["timeOut"], 1)[:], color = "red");
+
+subplot(122);
+grid("on");
+#title("Efficiency");
+xlabel("Initial t")
+ylabel("EF")
+plot(tuned["timeIn"], median(tuned["ESSIn"], 1)[:], label = "Initial EF")
+plot(tuned["timeIn"], median(tuned["ESSOut"], 1)[:], label = "Optimized EF")
+legend(loc="lower right",fancybox="true")
+
+
+for ii = 1:nrep plot(timeLevs, time_out[ii, :][:]); end
+
+
+
+##################################################################################
+##################################################################################
+##############   Show mixture contruction process
+##################################################################################
+##################################################################################
+
+#######
+# Load functions and one of the examples
+#######
+
+cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code")
+
+using StatsBase;
+using Distributions;
+using PyPlot;
+using Optim;
+using Distances;
+using Roots;
+using HDF5, JLD;
+using Lora;
+
+# Loading necessary functions
+include("utilities.jl");
+include("mvt.jl");
+include("createLangMix.jl");
+include("IMIS.jl");
+include("tuneIMIS.jl");
+include("fastMix.jl");
 
 ######
-## Normalizing constant estimates
+#
 ######
 
-### Means summed across dimensions
-conL = reduce(hcat, map(O -> meanExpTrick(O["logw"]), resL));
-conN = reduce(hcat, map(O -> meanExpTrick(O["logw"]), resN));
-conMix = reduce(hcat, map(O -> meanExpTrick(O["logw"]), resMix));
+blas_set_num_threads(1);
 
-tmp = hcat(conL', conN', conMix')
+# Mixture of Bananas
+d = 2
+banDim = copy(d);
+bananicity = [0.1, -0.1];
+sigmaBan = [6., 6.];
+banShiftX = [0., 0.];
+banShiftY = [0, 0];
+nmix = length(bananicity);
+bananaW = [1., 1.]; #ones( nmix ) / nmix #[0.2, 0.6, 0.2]; #;
+bananaW = bananaW / sum(bananaW);
 
-mean(tmp, 1) # Mean estimates
-mean((tmp - 1.).^2, 1) # MSE
-std(tmp, 1) # Standard deviation
+include("Examples/mixtureBanana.jl");
+
+x₀ = [14. 3. 6.; 5. 7 -5]
+t₀ = 0.;
+nt = 300;
+δt = 4/nt;
+
+nmix  = size(x₀)[2];
+
+μStore = Array(Float64, d, nmix, nt);
+ΣStore = Array(Float64, d, d, nmix, nt);
+
+μM = copy(x₀);
+ΣM = nothing;
+for ii in 1:1:nt
+  μM, ΣM = createLangMix(μM, score, hessian, δt; targetESS = 1-1e-2,
+                         Q = nothing, Σ₀ = ΣM)
+  μStore[:, :, ii] = μM;
+  ΣStore[:, :, :, ii] = ΣM;
+end
+
+#### Plotting
+
+L = 150;
+x1 = linspace(-15., 15., L);
+x2 = linspace(-10., 10., L);
+
+# Define target parameters
+d_lik = eye(L);
+
+if( banDim == 2)
+
+ for iRow = 1:L
+   for iCol = 1:L
+     #@printf("%d", iCol);
+     d_lik[iRow, iCol] = dTarget([x1[iCol] x2[iRow]]')[1];
+     #if x1[iCol] > 0.   d_lik[iRow, iCol] =  0.; end
+  end;
+ end;
+
+ contour(x1, x2, d_lik);
+
+end
+
+# Define target parameters
+d_lik = eye(L);
+
+for kk = 1:nmix
+
+  plot(μStore[1, kk, :][:], μStore[2, kk, :][:])
+  scatter(μStore[1, kk, 1], μStore[2, kk, 1])
+
+ for iRow = 1:L
+   for iCol = 1:L
+     #@printf("%d", iCol);
+     d_lik[iRow, iCol] = dmvt([x1[iCol] x2[iRow]]', μM[:, kk, end], ΣM[:,:, kk, end])[1];
+  end;
+ end;
+ contour(x1, x2, d_lik);
+end
+
+xlabel("x")
+ylabel("y")

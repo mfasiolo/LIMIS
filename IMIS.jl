@@ -67,7 +67,7 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
 
   end
 
-  if B == nothing   B = n;   end
+  if B == nothing   B = copy(n);   end
 
   # Sample from prior
   x = rPrior( n₀ );
@@ -316,7 +316,7 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
 
   end
 
-  if B == nothing   B = n;   end
+  if B == nothing   B = copy(n);   end
 
   # Sample from prior
   x = rPrior( n₀ );
@@ -422,7 +422,7 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
 
       end
 
-      if(add)
+      if( add )
 
         # The mixture has grown by one component
         nmix += 1;

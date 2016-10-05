@@ -61,17 +61,17 @@ sigma = sigma * sigma';
 #sigma = [[1.; 0.5] [0.5; 2.]];
 df = 1000;
 
-x = rmvt(n, mu, sigma, df)
+x = rmvt(n, mu, sigma, df);
 
 mean(x, 2) - mu
 cov(x') - sigma * (df / (df - 2))
 
 # scatter(x[1, 1:1:10000][:], x[2, 1:1:10000][:])
 
-srand(41241)
+srand(41241);
 x = rmvt(n, mu, sigma, Inf);
 
-srand(41241)
+srand(41241);
 y = rmvt(n, mu, sigma, 1000000);
 
 mean( abs(x-y) )

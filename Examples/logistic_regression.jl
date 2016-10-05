@@ -1,24 +1,44 @@
-d = 2;
-n = 200;
 
+########### REAL OR ....
+sonar = FileIO.load("sonar.RData")["sonar"];
+
+sonar = convert(Matrix, sonar);
+
+d = 61; #61 maximum
+
+y = sonar[:, end][:];
+
+nobs = length(y);
+
+XL = sonar[:, 1:d];
+
+λ = exp(-2) * nobs; # Chosen with glmnet in R
+
+########### ... Simulated data
 # Simulate parameters, covariates and data
-θ = rand(Normal(0., 1.), d);
+#
+#d = 5; error("this stuff does not work in parallel")
+#nobs = 200;
 
-XL = rand(MvNormal(zeros(d), eye(d)), n)';
+#θ = rand(d);
 
-XXᵗ = map(ii -> XL[ii, :]'* XL[ii, :], 1:n);
+#XL = hcat(rep(1, nobs), rand(MvNormal(zeros(d-1), eye(d-1)), nobs)');
 
-# This should be  exp(X*θ) ./ ( 1 + exp(X*θ) )
-# but for some reason I need to flip the sign of θ (PROBLEM)
-p = exp(-XL*θ) ./ ( 1 + exp(-XL*θ) );
+#p = exp(XL*θ) ./ ( 1 + exp(XL*θ) );
 
-y = map(p_ -> rand(Bernoulli(p_), 1)[1], p);
+#y = map(p_ -> rand(Bernoulli(p_), 1)[1], p);
+
+#λ = 1;
+############
+
+##### Useful stuff
+XXᵗ = map(ii -> XL[ii, :]* XL[ii, :]', 1:nobs);
 
 # Get scatter matrix of X
-Σₓ = reduce(+, map(ii -> XL[ii, :]'*XL[ii, :], 1:n) ) / n;
+Σₓ = eye(d); #reduce(+, map(ii -> XL[ii, 2:end]'*XL[ii, 2:end], 1:nobs) ) / nobs;
+Σₓ[1, 1] = 0.;
 
-# Complexity penalty
-λ = 0.;
+##############
 
 # Target function
 function dTarget(θ; Log = false)
@@ -36,11 +56,13 @@ function dTarget(θ; Log = false)
 
     θᶻ = θ[:, zz];
 
-    out[zz] = ( -y'*XL*θᶻ - sum( log(1 + exp(-XL*θᶻ)) ) - 0.5*λ*(θᶻ'*Σₓ*θᶻ) )[1];
+    out[zz] = ( y'*XL*θᶻ - sum( log(1 + exp(XL*θᶻ)) ) - 0.5*λ*(θᶻ'*Σₓ*θᶻ) )[1];
 
   end
 
   if( !Log ) out = exp( out ) end
+
+  #@printf("%f ", out[1]);
 
   return( out );
 
@@ -63,7 +85,7 @@ function score(θ)
 
     θᶻ = θ[:, zz];
 
-    out[:, zz] = -XL'*y + sum( broadcast(/, XL, 1. + exp(XL*θᶻ)), 1)[:] - λ*Σₓ*θᶻ;
+    out[:, zz] = XL'*y - sum( broadcast(/, XL, 1. + exp(-XL*θᶻ)), 1)[:] - λ*Σₓ*θᶻ;
 
     #@printf("%f ", sum(abs(out[:, zz] - aaa)));
 
@@ -94,35 +116,52 @@ function hessian(θ)
 
 end
 
-# Checks
-score(θ)
 
-hessian(θ)
-#fdHessian(θ, score)
+#######
+# Tests
+#######
+dbg = true;
 
+# Testing gradient with finite differences
+if dbg
+  nreps = 100;
+  x = rmvt(nreps, rep(0, d), eye(d) );
+  fdGrad = zeros(d, nreps);
+  for kk = 1:(nreps)
+    for ii = 1:d
+      x1 = copy(x[:, kk][:]);
+      x2 = copy(x[:, kk][:]);
+      x1[ii] -= 1e-6;
+      x2[ii] += 1e-6;
+      fdGrad[ii, kk] = ( dTarget(x2; Log = true)[1] - dTarget(x1; Log = true)[1] ) ./ (2*1e-6);
+    end
+  end
 
-tmpθ = zeros(d);
-score(tmpθ)[1] - (dTarget(tmpθ + 1e-6*[1.; zeros(d-1)]; Log = true) - dTarget(tmpθ; Log = true)) / 1e-6
-score(tmpθ)[2] - (dTarget(tmpθ + 1e-6*[zeros(d-1), 1]; Log = true) - dTarget(tmpθ; Log = true)) / 1e-6
+  tmp = maximum( abs( score(x) - fdGrad ) ./ abs(fdGrad), 2 )
+  if( maximum(tmp) > 0.01 ) error("score() disagrees with finite differences ") end
+end
 
-# optimize(par -> -dTarget(par; Log = true)[1],
-#          # g!,
-#          zeros(d), # θ - 1,
-#          method = :nelder_mead)
+# Testing gradient with finite differences
+if dbg
+  nreps = 100;
+  x = rmvt(nreps, rep(0, d), eye(d) );
+  DHess = map(ii -> fdHessian(x[:, ii][:], score; h = 1e-6), 1:1:nreps);
+  AHess = map(ii -> hessian(x[:, ii][:]), 1:1:nreps);
 
-# tmp = map(x_ -> dTarget([x_; θ[2]]; Log = true)[1], -2.:0.1:2.)[:];
-
-#plot(-2.:0.1:2., tmp)
+  tmp = map(ii -> maximum( abs(DHess[ii] - AHess[ii]) ), 1:1:nreps)
+  if( maximum(tmp) > 0.00001 ) error("hessian() disagrees with finite differences ") end
+end
 
 
 ########## Prior
-μ_P = optimize(par -> -dTarget(par; Log = true)[1], θ).minimum
-Σ_P = -2 * inv( hessian(μ_P) )
+μ_P = optimize(par -> -dTarget(par; Log = true)[1], rep(0., d), LBFGS()).minimum
+Σ_P = - 2 * inv( hessian(μ_P) )
+Σ_P = (Σ_P .+ Σ_P') ./ 2.;
 
 # Prior density
 function dPrior(x_; Log = false)
 
-  out = logpdf(MvNormal(μ_P, Σ_P), x_);
+  out = dmvt(x_, μ_P, Σ_P, 3; Log = Log);
 
   if( !Log ) out = exp( out ); end
 
@@ -131,8 +170,7 @@ function dPrior(x_; Log = false)
 end
 
 # Prior Generator
-rPrior(n_) = rand(MvNormal(μ_P, Σ_P), n_);
-
+rPrior(n_) = rmvt(n_, μ_P, Σ_P, 3);
 
 
 
@@ -140,7 +178,7 @@ rPrior(n_) = rand(MvNormal(μ_P, Σ_P), n_);
 ####### Plotting it
 ########################################
 
-if d == 2
+if false #d == 2
 
   L = 25;
   x1 = linspace(θ[1]-3., θ[1]+3., L);
@@ -164,6 +202,6 @@ plotTarget = function()
   if(d != 2) throw("d != 2"); end
 
   contour(x1, x2, d_lik);
-  scatter(θ[1], θ[2]);
+  #scatter(θ[1], θ[2]);
 
 end

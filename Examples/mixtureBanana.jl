@@ -251,7 +251,7 @@ end
 # Prior density
 function dPrior(x_; Log = false)
 
-  out = logpdf(MvNormal(μ_P, Σ_P), x_);
+  out = dmvt(x_, μ_P, Σ_P, 3; Log = Log);
 
   if( !Log ) out = exp( out ); end
 
@@ -260,7 +260,7 @@ function dPrior(x_; Log = false)
 end
 
 # Prior Generator
-rPrior(n_) = rand(MvNormal(μ_P, Σ_P), n_);
+rPrior(n_) = rmvt(n_, μ_P, Σ_P, 3);
 
 #################
 ### Contour plots
