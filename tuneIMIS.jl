@@ -30,7 +30,7 @@ function tuneIMIS(obj, tseq; frac = 1.0, verbose = false)
   # Extracting stuff from obj
   X₀ = obj["X₀"][:, subInd];
   μ₀ = obj["μOrig"];
-  w = obj["w"][subInd];
+  w = exp( obj["logw"][subInd] );
   wmix = obj["wmix"];
   dLogTar = obj["dLogTar"][subInd];
   dLogPrior = obj["dLogPrior"][subInd];
@@ -52,9 +52,13 @@ function tuneIMIS(obj, tseq; frac = 1.0, verbose = false)
 
   dmix = Array(Float64, np);
 
-  # Storage for means and covariance. Σ is "nothing" so createLangMix() does not use it in the first iteration
+  # Mean and covariance. Σ is "nothing" so createLangMix() does not use it in the first iteration
   μ = copy(μ₀);
   Σ = nothing;
+
+  # Storage for mean and covariance, one for each value in tseq
+  μStore = Array(Float64, d, nmix, nt);
+  ΣStore = Array(Float64, d, d, nmix, nt);
 
   # Storage to be used by dGausMix()
   dTrans = Array(Float64, np, nmix);
@@ -67,6 +71,10 @@ function tuneIMIS(obj, tseq; frac = 1.0, verbose = false)
     # Create Langevin mixture importance density efficiently, because we start from Σ computed by previous iteration
     μ, Σ = createLangMix(μ, control["score"], control["hessian"], δt[ii]; targetESS = control["targetESS"], Σ₀ = Σ);
 
+    # Store
+    μStore[:, :, ii] = μ;
+    ΣStore[:, :, :, ii] = Σ;
+
     # Evaluate weighted mixture
     dmix = α * exp(dLogPrior) .+ (1.-α) * dGausMix(X₀, μ, Σ; df = control["df"], w = wmix, Log = false, dTrans = dTrans)[1];
 
@@ -75,6 +83,8 @@ function tuneIMIS(obj, tseq; frac = 1.0, verbose = false)
 
   end
 
-  return expVar
+  output = Dict{Any,Any}("expVar" => expVar, "μ" => μStore, "Σ" => ΣStore);
+
+  return output
 
 end
