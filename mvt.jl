@@ -41,7 +41,7 @@ function dmvt(x, μ, Σ, df = 3; Log = false, A = nothing, out = nothing)
   if (out == nothing) out = Array(Float64, n); end
 
   # We want the lower triangle
-  dec = sparse( chol( Σ )' );
+  dec = factorize( chol( Σ )' );
 
   # A = x - μ
   broadcast!(-, A, x, μ);
@@ -91,11 +91,11 @@ function maha(x, μ, Σ; isChol = false, A = nothing, out = nothing)
   # We want the lower triangle
   if ( !isChol )
 
-    dec = sparse( chol( Σ )' );
+    dec = factorize( chol( Σ )' );
 
   else
 
-    dec = Σ;
+    dec = factorize( Σ );
 
   end
 
@@ -197,4 +197,3 @@ function rGausMix(n, μ, Σ; df = Inf, w = nothing, A = nothing, labs = false)
   end
 
 end
-
