@@ -14,11 +14,16 @@
 # - frac: the fraction of samples in obj used to estimate the variance of the weights.
 #         frac ∈ (0, 1]. Reducing frac speeds up the estimation, but reduces the accuracy.
 #         Default is frac = 1.0.
+# - self: if true the weights need to be normalized
+# - crit: if crit == "kl" the kl divergence will be evaluated, if crit == "var" the variance will be evaluated
 # - verbose: if true some information is printed as the algorithm runs. Default is verbose = true.
 #### OUTPUT
-# - expVar: the estimated variance of the importance weights corresponding to each value in tseq.
+# - expVar: for each value in tseq: the estimated kl divergence between target and importance density or
+#           the estimated variance of the importance weights corresponding to each value in tseq.
 #
-function tuneIMIS(obj, tseq; frac = 1.0, verbose = false)
+@everywhere function tuneIMIS(obj, tseq; frac = 1.0, self = true, crit = "kl", verbose = false)
+
+  if self && (crit=="var")   @printf("If self-normalized IS is used, it is better setting argument \"crit\" to \"kl\""); end
 
   # Total number of samples
   total = size(obj["X₀"], 2);
@@ -30,25 +35,26 @@ function tuneIMIS(obj, tseq; frac = 1.0, verbose = false)
   # Extracting stuff from obj
   X₀ = obj["X₀"][:, subInd];
   μ₀ = obj["μOrig"];
-  w = exp( obj["logw"][subInd] );
+  logw = obj["logw"][subInd];
   wmix = obj["wmix"];
   dLogTar = obj["dLogTar"][subInd];
   dLogPrior = obj["dLogPrior"][subInd];
   control = obj["control"];
 
-  # Normalize weights
-  w = w / sum(w)
-
   d, nmix = size( μ₀ );
 
   # The weight of the prior is proportional to the fraction of samples from the prior
-  α = control["n₀"] / (control["n₀"] + control["niter"] * control["n"]);
-
+  nk = (control["n₀"] + control["niter"] * control["n"])
+  α = control["n₀"] / nk;
   nt = length( tseq );
   δt = diff( [0; tseq] );
 
+  # If self-normalized IS used, calculate normalizing constant
+  chat = 1.;
+  if self    chat = meanExpTrick( obj["logw"] );   end
+
   # Output: expected variance of the importance sampling estimates
-  expVar = Array(Float64, nt);
+  out = Array(Float64, nt);
 
   dmix = Array(Float64, np);
 
@@ -75,15 +81,28 @@ function tuneIMIS(obj, tseq; frac = 1.0, verbose = false)
     μStore[:, :, ii] = μ;
     ΣStore[:, :, :, ii] = Σ;
 
-    # Evaluate weighted mixture
-    dmix = α * exp(dLogPrior) .+ (1.-α) * dGausMix(X₀, μ, Σ; df = control["df"], w = wmix, Log = false, dTrans = dTrans)[1];
+    # Evaluate log importance density with no underflow
+    logdmix = dGausMix(X₀, μ, Σ; df = control["df"], w = wmix, Log = true, dTrans = dTrans)[1];
+    minp = minimum( [dLogPrior; logdmix] );
+    logdmix = minp + log(α * exp(dLogPrior-minp) + (1-α) * exp(logdmix-minp));
 
-    # Cross-validate using existing samples
-    expVar[ii] = dot(exp(dLogTar)./dmix, w);
+    # Calculate variance of ...
+    if crit == "kl" # self-normalized IS estimator: compute negative cross-entropy OR...
+
+     mxtmp = maximum(logw);
+     out[ii] = - exp(mxtmp) * dot(logdmix, exp(logw-mxtmp)) / (chat*np);
+
+    elseif crit == "var" # ... standard IS estimator: compute estimated variance of IS
+
+        tmp = dLogTar + logw - logdmix ;
+        mxtmp = maximum(tmp);
+        out[ii] = log(sum(exp(tmp-mxtmp))) + mxtmp - log(np);
+
+    else error("Argument crit should be either \"kl\" or \"var\".")  end
 
   end
 
-  output = Dict{Any,Any}("expVar" => expVar, "μ" => μStore, "Σ" => ΣStore);
+  output = Dict{Any,Any}("expVar" => out, "μ" => μStore, "Σ" => ΣStore);
 
   return output
 
