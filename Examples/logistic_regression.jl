@@ -11,6 +11,7 @@ y = sonar[:, end][:];
 nobs = length(y);
 
 XL = sonar[:, 1:d];
+XLT = XL';
 
 λ = exp(-2) * nobs; # Chosen with glmnet in R
 
@@ -37,6 +38,10 @@ XXᵗ = map(ii -> XL[ii, :]* XL[ii, :]', 1:nobs);
 # Get scatter matrix of X
 Σₓ = eye(d); #reduce(+, map(ii -> XL[ii, 2:end]'*XL[ii, 2:end], 1:nobs) ) / nobs;
 Σₓ[1, 1] = 0.;
+λΣₓ = λ * Σₓ;
+λV = ones(d)*λ;
+λV[1] = 0.;
+XLTy = XL'*y;
 
 ##############
 
@@ -71,51 +76,42 @@ end
 # Score (gradient) of log-target
 function score(θ)
 
-  if ( ndims(θ) < 2 ) θ = θ'' end
+  b = 1 ./ (1 + exp(-(XL*θ)));
+  b = XLTy - XLT*b - λV.*θ;
 
-  (d, n) = size(θ)
-
-  d = size(θ)[1];
-  n = size(θ)[2];
-  m = size(XL)[1];
-
-  θᶻ = zeros(d);
-  out = zeros(d, n);
-  for zz = 1:n
-
-    θᶻ = θ[:, zz];
-
-    out[:, zz] = XL'*y - sum( broadcast(/, XL, 1. + exp(-XL*θᶻ)), 1)[:] - λ*Σₓ*θᶻ;
-
-    #@printf("%f ", sum(abs(out[:, zz] - aaa)));
-
-  end
-
-  return( out );
+  return( b );
 
 end
 
 # Hessian of log-target
-function hessian(θ)
+function hessianGenerator(d, nobs)
 
-  m, d = size(XL);
+  A = Array(Float64, d, d);
+  K = Array(Float64, nobs, d);
+  b = Array(Float64, nobs);
 
-  tmp = exp(XL*θ) ./ (1. + exp(XL*θ)).^2
+ function fun(θ)
 
-  out = - λ * Σₓ;
+  b = exp(XL*θ);
+  b = - b ./ (1. + b).^2;
 
-  for ii = 1:m
+  K .= (*).(XL,b);
+  A_mul_B!(A, XLT, K);
+  A .-= λΣₓ;
 
-    out -= tmp[ii] * XXᵗ[ii];
+  return( A );
+ end
 
-  end
-
-   #@printf("%f ", sum(abs(out - out2)));
-
-  return( out );
+ return( fun )
 
 end
 
+hessian = hessianGenerator(d, nobs);
+
+#nreps = 10000;
+#x = rmvt(nreps, rep(0, d), eye(d) );
+#@time AHess = map(ii -> hessian(x[:, ii][:]), 1:1:nreps);
+#@time AHess = map(ii -> score(x[:, ii][:]), 1:1:nreps);
 
 #######
 # Tests
@@ -137,7 +133,8 @@ if dbg
     end
   end
 
-  tmp = maximum( abs( score(x) - fdGrad ) ./ abs(fdGrad), 2 )
+  Ascore = map(ii -> score(x[:, ii][:]), 1:1:nreps);
+  tmp = map(ii -> maximum(abs(Ascore[ii] - fdGrad[:, ii]) ./ abs(fdGrad)), 1:1:nreps)
   if( maximum(tmp) > 0.01 ) error("score() disagrees with finite differences ") end
 end
 
@@ -146,7 +143,7 @@ if dbg
   nreps = 100;
   x = rmvt(nreps, rep(0, d), eye(d) );
   DHess = map(ii -> fdHessian(x[:, ii][:], score; h = 1e-6), 1:1:nreps);
-  AHess = map(ii -> hessian(x[:, ii][:]), 1:1:nreps);
+  AHess = map(ii -> copy(hessian(x[:, ii][:])), 1:1:nreps);
 
   tmp = map(ii -> maximum( abs(DHess[ii] - AHess[ii]) ), 1:1:nreps)
   if( maximum(tmp) > 0.00001 ) error("hessian() disagrees with finite differences ") end
@@ -154,7 +151,7 @@ end
 
 
 ########## Prior
-μ_P = optimize(par -> -dTarget(par; Log = true)[1], rep(0., d), LBFGS()).minimum
+μ_P = optimize(par -> -dTarget(par; Log = true)[1], rep(0., d), LBFGS()).minimizer
 Σ_P = - 2 * inv( hessian(μ_P) )
 Σ_P = (Σ_P .+ Σ_P') ./ 2.;
 
