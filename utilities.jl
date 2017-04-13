@@ -158,20 +158,23 @@ function propagate(μ₀, Σ₀, δt, t₀, score, hessian, dTarget; maxit = 20)
   Σ₁ = Array(Float64, d, d);
 
   # Hessians
+  I = eye(d);
   H = Array(Float64, d, d);
   H₀ = Array(Float64, d, d);
 
   # Temporary storage
   μ = Array(Float64, d);
+  ∇logπ₀ = Array(Float64, d);
 
   # Current log-target value and gradient
   old = dTarget(μ₀; Log = true)[1];
-  ∇logπ = score( μ₀ );
 
   t = 0.
   jj = 1;
   # Continue to propagate μ(t) and Σ(t) until the stopping time t₀
   while t < t₀ # START progagation
+
+    ∇logπ₀ = score(μ₀);
 
     kk = 1;
     Δ = -1.0;
@@ -182,7 +185,7 @@ function propagate(μ₀, Σ₀, δt, t₀, score, hessian, dTarget; maxit = 20)
       δt = minimum([δt; t₀ - t]);
 
       # Second order Runge-Kutta
-      μ = μ₀ + (δt/2.) * ∇logπ/2.; # Half move
+      μ = μ₀ + (δt/2.) * ∇logπ₀/2.; # Half move
       μ₁ = μ₀ + δt * score(μ)/2.   # Whole move
 
       Δ =  try   dTarget(μ₁; Log = true)[1] - old    catch    -1.    end
@@ -198,19 +201,19 @@ function propagate(μ₀, Σ₀, δt, t₀, score, hessian, dTarget; maxit = 20)
     # Propagating Σ
     if(Σ₀ == nothing)
 
-      Σ₁ = δt * eye(d);
+      Σ₁ = δt*I;
 
     else
 
-      H₀ = hessian(μ₀);
-      H = hessian(μ);
-
-      # Second order Runge-Kutta
+      # Second order Runge-Kutta IMP: IF hessian is a pointer, you need to save H0 !!!
+      #H₀ = copy( hessian(μ₀) );
+      #H = hessian(μ);
       #Σ₁  = Σ₀ + (δt/4.) * (H₀*Σ₀ + Σ₀*H₀ + H₀*Σ₀*H₀*(δt/4.))  + (δt/2.)*eye(d);
       #Σ₁  = Σ₀ + (δt/2.) * (H*Σ₁ + Σ₁*H + H*Σ₁*H*(δt/2)) + δt*eye(d);
 
       # Forward Euler: for some reason it seems to work better than RK when δt is big.
-      Σ₁ = Σ₀ + (δt/2.) * (H₀*Σ₀ + Σ₀*H₀ + H₀*Σ₀*H₀*(δt/2)) + δt*eye(d);
+      H₀ = hessian(μ₀);
+      Σ₁ = Σ₀ + (δt/2.) * (H₀*Σ₀ + Σ₀*H₀ + H₀*Σ₀*H₀*(δt/2)) + δt*I;
 
     end
 
@@ -225,7 +228,7 @@ function propagate(μ₀, Σ₀, δt, t₀, score, hessian, dTarget; maxit = 20)
 
   Σ₁ = ( Σ₁ .+ Σ₁' ) ./ 2.; # Symmetrize, just in case.
 
-  # @printf("%d ", jj);
+  @printf("%d ", jj);
 
   return vec(μ₁), Σ₁;
 
@@ -395,7 +398,7 @@ function matchESS(μ₀, Σ₀, score, hessian, dTarget, targetESS; rel_tol = 1e
 
   end
 
-  minδt = 1e-6;
+  minδt = 1e-7;
   maxδt = 1.0;
   δt = copy( maxδt );
 
@@ -406,7 +409,7 @@ function matchESS(μ₀, Σ₀, score, hessian, dTarget, targetESS; rel_tol = 1e
 
     else
 
-      δt = rootBisect(objFun, 1e-6, 1.; tol = rel_tol * (1.0 - targetESS), maxit = 50);
+      δt = rootBisect(objFun, minδt, maxδt; tol = rel_tol * (1.0 - targetESS), maxit = 50);
 
     end
   end
