@@ -228,7 +228,7 @@ function propagate(μ₀, Σ₀, δt, t₀, score, hessian, dTarget; maxit = 20)
 
   Σ₁ = ( Σ₁ .+ Σ₁' ) ./ 2.; # Symmetrize, just in case.
 
-  @printf("%d ", jj);
+  #@printf("%d ", jj);
 
   return vec(μ₁), Σ₁;
 
