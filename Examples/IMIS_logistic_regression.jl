@@ -21,13 +21,13 @@ RND = rand(1:1:1000000, nrep);
 pmap(x_ -> srand(x_), RND);
 
 ### Langevin IMIS
-resL = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
+resL = pmap(useless -> IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
             df = 3, trunc = false, quant = 0., useLangevin = true, verbose = true,
             t₀ = t₀, score = score, hessian = hessian, targetESS = 0.99),
             1:1:nrep);
 
 ### NIMIS
-resN = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
+resN = pmap(useless -> IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
             df = 3, trunc = false,  quant = 0., useLangevin = false,
             verbose = true, B = Bmult*n),
             1:1:nrep);
@@ -48,10 +48,14 @@ resMALA = pmap(nouse -> launchMALAjob(nouse), 1:1:nrep);
 # plot(resMALA[1]["value"][1, :][:])
 
 #### Benchmark by self-normalized IS
+mss = map(ii -> mean(resL[ii]["X₀"]', WeightVec(exp(resL[ii]["logw"])), 1), 1:1:nrep);
+mss = reduce(+, mss) / nrep;
+cvs = map(ii -> cov(resL[ii]["X₀"]', WeightVec(exp(resL[ii]["logw"]))), 1:1:nrep);
+cvs = reduce(+, cvs) / nrep;
 nBench = 1000000;
 nTOT = nBench*nrep;
-rtmp = pmap(n_ -> rmvt(n_, μ_P, Σ_P, 3), rep(nBench, nrep));
-wtmp = pmap(x_ -> dTarget(x_; Log = true) - dmvt(x_, μ_P, Σ_P, 3; Log = true)[:], rtmp);
+rtmp = map(n_ -> rmvt(n_, mss, cvs, 3), rep(nBench, nrep));
+wtmp = map(x_ -> dTarget(x_; Log = true) - dmvt(x_, mss, cvs, 3; Log = true)[:], rtmp);
 rtmp = reduce(hcat, rtmp);
 wtmp = reduce(vcat, wtmp)[:];
 ctmp = sumExpTrick(wtmp);
@@ -130,7 +134,7 @@ ESS_res = Dict{Any,Any}("L" => ESSL, "N" => ESSN, "Mix" => ESSMix, "MALA" => ESS
 all_summaries = Dict{Any,Any}( "mu" => mu_res, "var" => var_res,
                                "con" => con_res, "ESS" => ESS_res );
 
-JLD.save("Data/sonar_summaries_lambda7.jld", "all_summaries", all_summaries);
+JLD.save("Data/sonar_summaries_lambda_1.jld", "all_summaries", all_summaries);
 
 
 ############################################
@@ -138,7 +142,8 @@ JLD.save("Data/sonar_summaries_lambda7.jld", "all_summaries", all_summaries);
 ############################################
 
 # Load data
-all_data = load("Data/sonar_summaries.jld")["all_summaries"];
+all_data = load("Data/sonar_summaries_lambda_1.jld")["all_summaries"];
+#all_data = load("Data/sonar_summaries_lambda28.jld")["all_summaries"];
 
 #### 1) Marginal posterior means
 
@@ -224,7 +229,7 @@ tmp = hcat(ESS["L"][:, end][:], ESS["N"][:, end][:], ESS["Mix"], ESS["MALA"])
 
 mean(tmp, 1)
 std(tmp, 1)
-min(tmp, 1)
+minimum(tmp, 1)
 
 fig = figure();
 #subplot(122);

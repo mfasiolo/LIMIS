@@ -18,7 +18,7 @@ include("IMIS.jl");
 include("tuneIMIS.jl");
 include("fastMix.jl");
 
-idim = 2;
+idim = 5;
 
 d = [2; 5; 10; 20; 80][idim];
 niter = [200, 200, 200, 200, 200][idim];
@@ -26,6 +26,7 @@ niter = [200, 200, 200, 200, 200][idim];
 # quN = [0.05, 0.05, 0.15, 0.99, 0.99][idim];
 t₀ = [1, 1, 2, 3, 5][idim];
 Bmult = [1, 1, 1, 4, 10][idim];
+wCov = false;
 thins = [1, 1, 1, 1, 1][idim]; # thining for MALA
 
 # Mixture of Bananas
@@ -48,7 +49,7 @@ n₀ = 1000 * d;
 # Create importance mixture
 μMix = vcat([0. 0. 7 -7; -6. 0 8.2 8.2], zeros(d-2, 4));
 ΣMix = zeros(d, d, 4);
-for ii = 1:4   ΣMix[:, :, ii] = -2*inv(hessian(μMix[:, ii][:]));   end
+for ii = 1:4     ΣMix[:, :, ii] = -2*inv(hessian(μMix[:, ii][:]));     end
 wMix = bananaW[1:4] / sum(bananaW[1:4]);
 
 # MALA setup

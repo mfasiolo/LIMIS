@@ -31,6 +31,7 @@ include("fastMix.jl");
 niter = 100;
 t₀ = 1;
 Bmult = 20;
+wCov = false;
 thins = 1;
 
 include("Examples/logistic_regression.jl");

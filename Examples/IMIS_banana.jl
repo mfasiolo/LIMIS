@@ -106,11 +106,11 @@ n₀ = 1000 * d;
 ### 1 LIMIS
 srand(525);
 niter = 400;
-t₀ = 4.; #log( ( (4/(d+2)) ^ (1/(d+4)) * niter ^ -(1/(d+4)) )^2 + 1 );
+t₀ = 3.; #log( ( (4/(d+2)) ^ (1/(d+4)) * niter ^ -(1/(d+4)) )^2 + 1 );
 
 # Langevin IMIS
 resL4 = IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
-            df = 3, trunc = true, quant = 0., useLangevin = true, verbose = true,
+            df = 3, trunc = false, quant = 0., useLangevin = true, verbose = true,
             t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2
             );
 
@@ -131,21 +131,21 @@ d_lik4 = eye(L);
 for iRow = 1:L
   for iCol = 1:L
     #@printf("%d", iCol);dGausMix(x, μ, Σ; Log = false, df = Inf, w = nothing, dTrans = nothing)
-    d_lik1[iRow, iCol] = dTarget(vcat([x1[iCol] x2[iRow]][:], rep(0., d-2)))[1];
+    d_lik1[iRow, iCol] = dTarget(vcat([x1[iCol] x2[iRow]][:], rep(0., 2-2)))[1];
   end;
 end;
 
 for iRow = 1:L
   for iCol = 1:L
     #@printf("%d", iCol);dGausMix(x, μ, Σ; Log = false, df = Inf, w = nothing, dTrans = nothing)
-    d_lik2[iRow, iCol] = dGausMix(vcat([x1[iCol] x2[iRow]][:], rep(0., d-2))'', resL3["μ₀"], resL3["Σ₀"]; df = 3)[1][1];
+    d_lik2[iRow, iCol] = dGausMix(vcat([x1[iCol] x2[iRow]][:], rep(0., 2-2))'', resL3["μ₀"], resL3["Σ₀"]; df = 3)[1][1];
   end;
 end;
 
 for iRow = 1:L
   for iCol = 1:L
     #@printf("%d", iCol);dGausMix(x, μ, Σ; Log = false, df = Inf, w = nothing, dTrans = nothing)
-    d_lik3[iRow, iCol] = dGausMix(vcat([x1[iCol] x2[iRow]][:], rep(0., d-2))'', resL2["μ₀"], resL2["Σ₀"]; df = 3)[1][1];
+    d_lik3[iRow, iCol] = dGausMix(vcat([x1[iCol] x2[iRow]][:], rep(0., 2-2))'', resL2["μ₀"], resL2["Σ₀"]; df = 3)[1][1];
   end;
 end;
 
@@ -227,13 +227,13 @@ RND = rand(1:1:1000000, nrep);
 pmap(x_ -> srand(x_), RND);
 
 ### Langevin IMIS
-resL = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
+resL = pmap(useless -> IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
             df = 3, trunc = false, quant = 0., useLangevin = true, verbose = true,
             t₀ = t₀, score = score, hessian = hessian, targetESS = 1 - 1e-2),
             1:1:nrep);
 
 ### NIMIS
-resN = pmap(useless -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
+resN = pmap(useless -> IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
             df = 3, trunc = false,  quant = 0., useLangevin = false, verbose = true, B = Bmult*n),
             1:1:nrep);
 
@@ -494,14 +494,14 @@ legend(loc="top right",fancybox="true")
 ############################################################################################
 ############################################################################################
 
-#cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code")
+#@everywhere cd("$(homedir())/Desktop/All/Dropbox/Work/Liverpool/IMIS/Julia_code")
 @everywhere cd("$(homedir())/Dropbox/Work/Liverpool/IMIS/Julia_code");
 
 include("paralSetUp.jl");
 @everywhere include("paralSetUp.jl");
-@everywhere blas_set_num_threads(1);
+@everywhere BLAS_set_num_threads(1);
 
-ncores = 20;
+ncores = 4;
 nrep = 60;
 
 # Setting seed in parallel
@@ -521,14 +521,14 @@ ESSL_out = zeros(nrep, nlevs);
 for kk = 1:1:nlevs
 
   # Langevin IMIS
-  resL = pmap(t_ -> IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
+  resL = pmap(t_ -> IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
               df = 3, trunc = false, quant = 0., useLangevin = true, verbose = false,
               t₀ = t_, score = score, hessian = hessian, targetESS = 1 - 1e-2),
               rep(timeLevs[kk], nrep));
 
   # Tune t₀
   @everywhere tseq = linspace(2., 5., 20);
-  resTune = pmap(x_ -> tuneIMIS(x_, tseq; frac = 0.1, verbose = true), resL);
+  resTune = pmap(x_ -> tuneIMIS(x_, tseq; frac = 0.1, crit = "var", self = false, verbose = true), resL);
 
   # Extract optimal t₀ and mixture mean and covariances
   tOpt = zeros(nrep);
@@ -662,7 +662,7 @@ include("Examples/mixtureBanana.jl");
 
 x₀ = [14. 3. 6.; 5. 7 -5]
 t₀ = 0.;
-nt = 300;
+nt = 100;
 δt = 4/nt;
 
 nmix  = size(x₀)[2];
