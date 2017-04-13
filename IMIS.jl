@@ -40,6 +40,8 @@
 #      By default B = n
 # - maxMix: maximum number of mixture components. When it is reached the mixture growth will slow down drastically,
 #           but it will not stop entirely. By default maxMix = Inf.
+# - wCov: relevant only if useLangevin==false. If true the covariance of the i-th mixture component is calculated
+#         using weights (wn + 1/length(wn))/n, where the weights of the samples obtained so far. Default is false.
 #
 ### OUTPUT
 # The output is a dictionary with the following entries
@@ -56,10 +58,9 @@
 # - control: dictionary of internal controls, to be used by other methods.
 #
 function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
-              df = 3, trunc = true, quant = 0., useLangevin = true, verbose = false,
-              targetESS = 1-1e-3, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing,
-              maxMix = Inf, B = nothing
-              )
+  df = 3, trunc = true, quant = 0., useLangevin = true, verbose = false,
+  targetESS = 1-1e-2, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing,
+  maxMix = Inf, B = nothing, wCov = false)
 
   # Safety checks
   if useLangevin && (t₀ == nothing || score == nothing || hessian == nothing)
@@ -155,9 +156,10 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
 
       else  # ... n nearest neighbours
 
-       # Raftery in step 2.a of the IMIS paper says to use tmpw = 0.5*(wn + 1/length(wn))
-       # but this does not quite work in high dimensions.
+        # If wCov==true we weight the covariance as in step 2.a of Raftery's IMIS paper.
+        # But this does not quite work in high dimensions, where it is better not to use weights.
         tmpw = wn.*0 + 1/length(wn);
+        if wCov           tmpw = 0.5*(tmpw + wn);            end
         X_old = X₀[:, 1:(n₀ + n*(ii-1))];
         Σ = nnCov(μ, tmpw, X_old, cov(X_old'), min(B, n₀ + n*(ii-1)))[:, :, 1];
 
@@ -272,17 +274,17 @@ function IMIS(niter, n, n₀, dTarget, dPrior, rPrior;
 
   # List of internal controls, useful to tuneIMIS, which the user probably will not touch
   control = Dict{Any,Any}("score" => score, "hessian" => hessian,
-                          "t₀" => t₀, "Q" => Q, "df" => df, "trunc" => trunc,
-                          "n₀" => n₀, "n" => n, "niter" => niter, "targetESS" => targetESS)
+  "t₀" => t₀, "Q" => Q, "df" => df, "trunc" => trunc,
+  "n₀" => n₀, "n" => n, "niter" => niter, "targetESS" => targetESS)
 
   # Dropping oversized containers
   output = Dict{Any,Any}("ESS" => ESS,
-                         "X₀" => X₀,
-                         "μ₀" => μ₀[:, 1:nmix], "Σ₀" => Σ₀[:, :, 1:nmix], "μOrig" => μOrig[:, 1:nmix],
-                         "logw" => logw, "wmix" => wmix[1:nmix] / niter,
-                         "dLogTar" => dLogTar, "dLogPrior" => dLogPrior,
-                         "dimMix" => dimMix,
-                         "control" => control)
+  "X₀" => X₀,
+  "μ₀" => μ₀[:, 1:nmix], "Σ₀" => Σ₀[:, :, 1:nmix], "μOrig" => μOrig[:, 1:nmix],
+  "logw" => logw, "wmix" => wmix[1:nmix] / niter,
+  "dLogTar" => dLogTar, "dLogPrior" => dLogPrior,
+  "dimMix" => dimMix,
+  "control" => control)
 
 
   return output
@@ -298,9 +300,9 @@ end
 
 
 function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
-              df = 3, trunc = true, quant = 0., useLangevin = true, verbose = false,
-              targetESS = 1-1e-3, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing,
-              maxMix = Inf, B = nothing)
+  df = 3, trunc = true, quant = 0., useLangevin = true, verbose = false,
+  targetESS = 1-1e-2, t₀ = nothing, Q = nothing, score = nothing, hessian = nothing,
+  maxMix = Inf, B = nothing, wCov = false)
 
   # Safety checks
   if useLangevin && (t₀ == nothing || score == nothing || hessian == nothing)
@@ -395,11 +397,12 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
 
       else  # ... n nearest neighbours
 
-        # Raftery in step 2.a of the IMIS paper says to use tmpw = 0.5*(wn + 1/length(wn))
-        # but this does not quite work in high dimensions.
-         tmpw = wn.*0 + 1/length(wn);
-         X_old = X₀[:, 1:(n₀ + n*(ii-1))];
-         Σ = nnCov(μ, tmpw, X_old, cov(X_old'), min(B, n₀ + n*(ii-1)))[:, :, 1];
+        # If wCov==true we weight the covariance as in step 2.a of Raftery's IMIS paper.
+        # But this does not quite work in high dimensions, where it is better not to use weights.
+        tmpw = wn.*0 + 1/length(wn);
+        if wCov           tmpw = 0.5*(tmpw + wn);            end
+        X_old = X₀[:, 1:(n₀ + n*(ii-1))];
+        Σ = nnCov(μ, tmpw, X_old, cov(X_old'), min(B, n₀ + n*(ii-1)))[:, :, 1];
 
       end
 
@@ -510,17 +513,17 @@ function IMIS2(niter, n, n₀, dTarget, dPrior, rPrior;
 
   # List of internal controls, useful to tuneIMIS, which the user probably will not touch
   control = Dict{Any,Any}("score" => score, "hessian" => hessian, "t₀" => t₀,
-                          "Q" => Q, "df" => df, "trunc" => trunc,
-                          "n₀" => n₀, "n" => n, "niter" => niter, "targetESS" => targetESS)
+  "Q" => Q, "df" => df, "trunc" => trunc,
+  "n₀" => n₀, "n" => n, "niter" => niter, "targetESS" => targetESS)
 
   # Dropping oversized containers
   output = Dict{Any,Any}("ESS" => ESS,
-                         "X₀" => X₀,
-                         "μ₀" => μ₀[:, 1:nmix], "Σ₀" => Σ₀[:, :, 1:nmix], "μOrig" => μOrig[:, 1:nmix],
-                         "logw" => logw, "wmix" => wmix[1:nmix] / niter,
-                         "dLogTar" => dLogTar, "dLogPrior" => dLogPrior,
-                         "dimMix" => dimMix,
-                         "control" => control)
+  "X₀" => X₀,
+  "μ₀" => μ₀[:, 1:nmix], "Σ₀" => Σ₀[:, :, 1:nmix], "μOrig" => μOrig[:, 1:nmix],
+  "logw" => logw, "wmix" => wmix[1:nmix] / niter,
+  "dLogTar" => dLogTar, "dLogPrior" => dLogPrior,
+  "dimMix" => dimMix,
+  "control" => control)
 
 
   return output
